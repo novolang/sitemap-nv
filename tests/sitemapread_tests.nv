@@ -1,0 +1,148 @@
+// sitemapread_tests.nv — two readers, because there are two callers.
+//
+// RED ON PURPOSE: every assertion reaches `not implemented:
+// sitemap-nv.sitemapread.<fn>` or a function it calls.  What is
+// asserted is that `read` refuses what `read_lenient` drops, that both
+// root forms are recognised, and that the namespace is tolerated
+// whether it is there or not.
+
+use std.test
+use sitemapdoc
+use sitemaperror
+use sitemapread
+use sitemapurl
+use xmltree
+
+fn urlset_doc() -> Str
+    let ns = "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">"
+    let one = "<url><loc>https://example.org/a</loc><lastmod>2026-09-17</lastmod><changefreq>daily</changefreq><priority>0.8</priority></url>"
+    let two = "<url><loc>https://example.org/b?x=1&amp;y=2</loc></url>"
+    ns + one + two + "</urlset>"
+
+@test
+fn test_a_url_set_reads_into_typed_values() [io]
+    match sitemapread.read(urlset_doc())
+        Err(fault) => test.fail(fault.message())
+        Ok(doc)    =>
+            test.case("two URLs, in the order the file gives them")
+            test.assert(sitemapdoc.kind_name(doc.kind) == "urlset")
+            test.assert(list.len(doc.urls.urls) == 2)
+
+            test.case("the three optional elements are typed, not left as text")
+            let first = doc.urls.urls[0]
+            test.assert(first.loc == "https://example.org/a")
+            test.assert(first.lastmod == "2026-09-17")
+            test.assert(sitemapurl.changefreq_text(first.changefreq) == "daily")
+            test.assert(first.priority_milli == 800)
+
+            test.case("an entry with none of them says so, rather than carrying defaults")
+            let second = doc.urls.urls[1]
+            test.assert(second.priority_milli == 0 - 1)
+            test.assert(sitemapurl.changefreq_text(second.changefreq) == "")
+
+            test.case("and an escaped ampersand comes back as one character")
+            test.assert(second.loc == "https://example.org/b?x=1&y=2")
+
+            test.case("read drops nothing: it refuses instead")
+            test.assert(list.len(doc.skipped) == 0)
+
+@test
+fn test_an_index_reads_into_the_other_form() [io]
+    let text = "<sitemapindex><sitemap><loc>https://example.org/s-1.xml</loc><lastmod>2026-09-17</lastmod></sitemap></sitemapindex>"
+
+    match sitemapread.read(text)
+        Err(fault) => test.fail(fault.message())
+        Ok(doc)    =>
+            test.case("one entry, and no URLs")
+            test.assert(sitemapdoc.kind_name(doc.kind) == "sitemapindex")
+            test.assert(list.len(doc.index.refs) == 1)
+            test.assert(list.len(doc.urls.urls) == 0)
+            test.assert(doc.index.refs[0].lastmod == "2026-09-17")
+
+    test.case("which form a file is can be asked before it is read")
+    match sitemapread.kind_of(xmltree.build(text))
+        Some(kind) => test.assert(sitemapdoc.kind_name(kind) == "sitemapindex")
+        None       => test.fail("this is a sitemap index")
+
+    test.case("and a document that is neither is not a sitemap at all")
+    match sitemapread.kind_of(xmltree.build("<rss></rss>"))
+        Some(_) => test.fail("an RSS feed is not a sitemap")
+        None    => test.assert(true)
+
+@test
+fn test_the_strict_reader_refuses_what_the_lenient_one_drops() [io]
+    // A site generator reading back its own output wants the first.  A
+    // crawler reading somebody else's wants the second.
+    let broken = "<urlset><url><loc>https://example.org/a</loc><priority>high</priority></url><url><loc>https://example.org/b</loc></url></urlset>"
+
+    test.case("read refuses, naming what was written")
+    match sitemapread.read(broken)
+        Ok(_)      => test.fail("`high` is not a priority")
+        Err(fault) =>
+            test.assert(sitemaperror.code(fault) == "bad_priority")
+            test.assert(sitemaperror.is_entry_fault(fault))
+
+    test.case("read_lenient keeps the good entry and records the bad one")
+    match sitemapread.read_lenient(broken)
+        Err(fault) => test.fail(fault.message())
+        Ok(doc)    =>
+            test.assert(list.len(doc.urls.urls) == 1)
+            test.assert(doc.urls.urls[0].loc == "https://example.org/b")
+            test.assert(list.len(doc.skipped) == 1)
+
+    test.case("and a fault about the whole document is refused by both")
+    match sitemapread.read_lenient("<rss></rss>")
+        Ok(_)      => test.fail("there is nothing to carry on with")
+        Err(fault) =>
+            test.assert(sitemaperror.code(fault) == "wrong_root")
+            test.assert(not sitemaperror.is_entry_fault(fault))
+            test.assert(not sitemaperror.is_writer_fault(fault))
+
+    test.case("an entry with no loc names nothing, so it is a fault too")
+    match sitemapread.read("<urlset><url><priority>0.5</priority></url></urlset>")
+        Ok(_)      => test.fail("an entry with no loc names nothing")
+        Err(fault) => test.assert(sitemaperror.code(fault) == "missing_loc")
+
+@test
+fn test_the_namespace_and_the_extensions_are_tolerated() [io]
+    // Sitemaps in the field carry all of these, and a reader that
+    // insisted would refuse files every search engine accepts.
+    test.case("no namespace at all")
+    match sitemapread.read("<urlset><url><loc>https://example.org/a</loc></url></urlset>")
+        Ok(doc)    => test.assert(list.len(doc.urls.urls) == 1)
+        Err(fault) => test.fail(fault.message())
+
+    test.case("a comment, and an element from an extension")
+    let extended = "<urlset><!-- built today --><url><loc>https://example.org/a</loc><image:image><image:loc>https://example.org/i.png</image:loc></image:image></url></urlset>"
+    match sitemapread.read(extended)
+        Ok(doc)    => test.assert(list.len(doc.urls.urls) == 1)
+        Err(fault) => test.fail(fault.message())
+
+    test.case("and text that is not XML says where it stopped")
+    match sitemapread.read("<urlset")
+        Ok(_)      => test.fail("that is not a document")
+        Err(fault) => test.assert(sitemaperror.code(fault) == "not_xml")
+
+@test
+fn test_a_tree_already_parsed_is_not_parsed_again() [io]
+    let doc = xmltree.build(urlset_doc())
+
+    test.case("read_document takes the tree")
+    match sitemapread.read_document(doc)
+        Ok(read)   => test.assert(list.len(read.urls.urls) == 2)
+        Err(fault) => test.fail(fault.message())
+
+    test.case("the entry nodes are found, for a caller walking it itself")
+    let nodes = sitemapread.entry_nodes(doc)
+    test.assert(list.len(nodes) == 2)
+
+    test.case("and one entry reads on its own")
+    match sitemapread.read_url(doc, nodes[0])
+        Ok(u)      => test.assert(u.loc == "https://example.org/a")
+        Err(fault) => test.fail(fault.message())
+
+    test.case("as does one index entry")
+    let index = xmltree.build("<sitemap><loc>https://example.org/s.xml</loc></sitemap>")
+    match sitemapread.read_ref(index, xmltree.root(index))
+        Ok(r)      => test.assert(r.loc == "https://example.org/s.xml")
+        Err(fault) => test.fail(fault.message())

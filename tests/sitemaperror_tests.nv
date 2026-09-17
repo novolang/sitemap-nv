@@ -1,0 +1,61 @@
+// sitemaperror_tests.nv — which side of the pipe a fault is on, and
+// whether a reader can carry on past it.
+//
+// RED ON PURPOSE: every assertion reaches `not implemented:
+// sitemap-nv.sitemaperror.<fn>`.  What is asserted is that a fault
+// about one entry is told apart from one about the whole document,
+// because a crawler with 49,999 good entries wants them.
+
+use std.test
+use sitemaperror
+
+@test
+fn test_a_fault_about_one_entry_is_not_a_fault_about_the_document() [io]
+    test.case("the faults a lenient reader can drop an entry for")
+    test.assert(sitemaperror.is_entry_fault(SitemapMissingLoc(3)))
+    test.assert(sitemaperror.is_entry_fault(SitemapBadChangefreq("fortnightly")))
+    test.assert(sitemaperror.is_entry_fault(SitemapBadPriority("high")))
+    test.assert(sitemaperror.is_entry_fault(SitemapBadLastmod("soon")))
+    test.assert(sitemaperror.is_entry_fault(SitemapBadLoc("/a", "not absolute")))
+
+    test.case("and the two it cannot, because there is nothing to carry on with")
+    test.assert(not sitemaperror.is_entry_fault(SitemapNotXml(12, "unclosed element")))
+    test.assert(not sitemaperror.is_entry_fault(SitemapWrongRoot("rss")))
+
+@test
+fn test_a_writer_fault_is_this_program_and_a_reader_fault_is_not() [io]
+    // A crawler logs somebody else's bad file and carries on.  A site
+    // generator stops, because it is about to publish a file no search
+    // engine will accept.
+    test.case("the fault only the writer raises")
+    test.assert(sitemaperror.is_writer_fault(SitemapUnwritable("loc", 4, 1)))
+
+    test.case("and the faults about a file somebody else wrote")
+    test.assert(not sitemaperror.is_writer_fault(SitemapNotXml(12, "x")))
+    test.assert(not sitemaperror.is_writer_fault(SitemapWrongRoot("rss")))
+    test.assert(not sitemaperror.is_writer_fault(SitemapBadChangefreq("fortnightly")))
+
+@test
+fn test_the_code_is_stable_and_carries_nothing_the_document_held() [io]
+    // A URL in a metric label would put a site's own paths into a time
+    // series database.
+    test.case("one short code per arm")
+    test.assert(sitemaperror.code(SitemapNotXml(0, "x")) == "not_xml")
+    test.assert(sitemaperror.code(SitemapWrongRoot("rss")) == "wrong_root")
+    test.assert(sitemaperror.code(SitemapMissingLoc(3)) == "missing_loc")
+    test.assert(sitemaperror.code(SitemapBadChangefreq("x")) == "bad_changefreq")
+    test.assert(sitemaperror.code(SitemapBadPriority("x")) == "bad_priority")
+    test.assert(sitemaperror.code(SitemapBadLastmod("x")) == "bad_lastmod")
+    test.assert(sitemaperror.code(SitemapBadLoc("x", "y")) == "bad_loc")
+    test.assert(sitemaperror.code(SitemapUnwritable("loc", 4, 1)) == "unwritable")
+
+    test.case("and the same fault about different contents has the same code")
+    test.assert(sitemaperror.code(SitemapWrongRoot("rss"))
+                == sitemaperror.code(SitemapWrongRoot("html")))
+
+@test
+fn test_every_arm_has_a_message_for_a_log() [io]
+    test.case("naming what was found")
+    test.assert(str.len(SitemapWrongRoot("rss").message()) > 0)
+    test.assert(str.len(SitemapBadPriority("high").message()) > 0)
+    test.assert(str.len(SitemapUnwritable("loc", 4, 1).message()) > 0)

@@ -1,0 +1,311 @@
+// sitemapdoc.nv — the index form, and the two limits as a report.
+//
+// THE LIMITS ARE A REPORT, NOT AN ERROR
+//
+// The protocol caps a sitemap file at 50,000 URLs and 50 MB
+// uncompressed.  A site with more pages than that does not have a
+// broken sitemap; it has a sitemap that must be split into several
+// files and named from an index.  Those are two different situations
+// and they want two different answers, so `check` answers a
+// `SitemapReport` rather than a `Result`: a report says how far over
+// the document is and how many files it would take, which is what a
+// caller does something with.
+//
+// A `Result` here would make the ordinary case — a large site — look
+// like a failure, and every caller would have to unwrap it to find out
+// that nothing is wrong.
+//
+// WHY THE BYTE COUNT IS ESTIMATED AND SAYS SO
+//
+// The 50 MB limit is on the written file, and a document's size
+// depends on how it is written: whether it is indented, whether a
+// declaration is emitted, how much escaping each URL needs.  So
+// `check` takes the write options, and `SitemapReport.bytes` is the
+// size the document would have IF written with those options.  A
+// caller that writes with different ones gets a different number, and
+// `sitemapwrite.to_str` is the only thing that knows the real one.
+//
+// THE INDEX NAMES FILES AND DOES NOT FETCH THEM
+//
+// A `sitemapindex` holds `loc` elements pointing at other sitemap
+// files.  Nothing in this package follows one.  That is a layer rule
+// and a security property at once: a sitemap is written by whoever
+// owns the site, and its `loc` elements are not addresses a library
+// should visit on a caller's behalf.
+
+use sitemapurl
+
+// One entry in a `sitemapindex`: another sitemap file.
+//
+// ```novo
+// use sitemapdoc
+//
+// fn main() [io]
+//     println(sitemapdoc.sitemap_ref("https://example.org/sitemap-1.xml").loc)
+// ```
+pub struct SitemapRef
+    // The `loc` element: the absolute URL of another sitemap file.
+    loc: Str
+    // The `lastmod` element, verbatim, or `""`.
+    lastmod: Str
+
+// A whole `sitemapindex` document.
+//
+// ```novo
+// use sitemapdoc
+//
+// fn main() [io]
+//     println("${list.len(sitemapdoc.index([]).refs)}")
+// ```
+pub struct SitemapIndex
+    // The sitemap files this index names, in order.
+    refs: [SitemapRef]
+
+// Which of the two documents a file is.
+//
+// ```novo
+// use sitemapdoc
+//
+// fn main() [io]
+//     println(sitemapdoc.kind_name(SitemapUrlsetKind))
+// ```
+pub enum SitemapKind
+    // A `urlset`: a list of pages.
+    SitemapUrlsetKind
+    // A `sitemapindex`: a list of other sitemap files.
+    SitemapIndexKind
+
+// The two caps the protocol sets on one file.
+//
+// ```novo
+// use sitemapdoc
+//
+// fn main() [io]
+//     println("${sitemapdoc.limits().max_entries}")
+// ```
+pub struct SitemapLimits
+    // How many `url` or `sitemap` elements one file may hold: 50,000.
+    max_entries: Int
+    // How many bytes the uncompressed file may be: 52,428,800, which
+    // is 50 MB counted as 1,048,576 bytes to the megabyte.
+    max_bytes: Int
+
+// What a document measures against the limits.
+//
+// ```novo
+// use sitemapdoc
+// use sitemapurl
+//
+// fn main() [io]
+//     let report = sitemapdoc.check(sitemapurl.urlset([]), sitemapdoc.limits())
+//     println("${report.entries}")
+// ```
+pub struct SitemapReport
+    // How many entries the document holds.
+    entries: Int
+    // How many bytes it would take to write, under the options `check`
+    // was given.  An estimate; see the note at the top of this module.
+    bytes: Int
+    // Whether the entry count is over the limit.
+    over_entries: Bool
+    // Whether the estimated size is over the limit.
+    over_bytes: Bool
+    // How many files this document would have to be split into to
+    // conform.  `1` when it already does.
+    files_needed: Int
+
+// The protocol's limits: 50,000 entries and 52,428,800 bytes.
+//
+// ```novo
+// use sitemapdoc
+//
+// fn main() [io]
+//     println("${sitemapdoc.limits().max_bytes}")
+// ```
+pub fn limits() -> SitemapLimits []
+    todo("sitemap-nv.sitemapdoc.limits")
+
+// Limits of a caller's own.
+//
+// A search engine that publishes a smaller cap, a content delivery
+// network with a size limit of its own, or a site that wants smaller
+// files for another reason.  The protocol's numbers are a maximum and
+// nothing stops a caller choosing less.
+//
+// ```novo
+// use sitemapdoc
+//
+// fn main() [io]
+//     println("${sitemapdoc.limits_of(10000, 5242880).max_entries}")
+// ```
+pub fn limits_of(max_entries: Int, max_bytes: Int) -> SitemapLimits []
+    todo("sitemap-nv.sitemapdoc.limits_of")
+
+// How a URL set measures against the limits.
+//
+// The size is what the document would take written with
+// `sitemapwrite.options()`; see the note at the top of this module on
+// why it is an estimate.
+//
+// ```novo
+// use sitemapdoc
+// use sitemapurl
+//
+// fn main() [io]
+//     let report = sitemapdoc.check(sitemapurl.urlset([]), sitemapdoc.limits())
+//     println("${report.files_needed}")
+// ```
+pub fn check(s: sitemapurl.SitemapSet, l: SitemapLimits) -> SitemapReport []
+    todo("sitemap-nv.sitemapdoc.check")
+
+// How an index measures against the limits.
+//
+// An index is capped the same way a URL set is: 50,000 entries.  A
+// site with more sitemap files than that needs an index of indexes,
+// which the protocol does not allow — so this is the one report whose
+// `files_needed` above one means the caller has to make its sitemaps
+// larger rather than more numerous.
+//
+// ```novo
+// use sitemapdoc
+//
+// fn main() [io]
+//     println("${sitemapdoc.check_index(sitemapdoc.index([]), sitemapdoc.limits()).entries}")
+// ```
+pub fn check_index(i: SitemapIndex, l: SitemapLimits) -> SitemapReport []
+    todo("sitemap-nv.sitemapdoc.check_index")
+
+// Whether a document conforms: neither limit exceeded.
+//
+// ```novo
+// use sitemapdoc
+// use sitemapurl
+//
+// fn main() [io]
+//     let report = sitemapdoc.check(sitemapurl.urlset([]), sitemapdoc.limits())
+//     println("${sitemapdoc.conforms(report)}")
+// ```
+pub fn conforms(report: SitemapReport) -> Bool []
+    todo("sitemap-nv.sitemapdoc.conforms")
+
+// A URL set split into as many conforming files as it takes.
+//
+// The order of the URLs is kept, and each file holds as many as fit
+// under both limits.  A set that already conforms answers a list of
+// one, so a caller writes the same loop either way.
+//
+// ```novo
+// use sitemapdoc
+// use sitemapurl
+//
+// fn main() [io]
+//     let parts = sitemapdoc.split(sitemapurl.urlset([]), sitemapdoc.limits())
+//     println("${list.len(parts)}")
+// ```
+pub fn split(s: sitemapurl.SitemapSet, l: SitemapLimits) -> [sitemapurl.SitemapSet] []
+    todo("sitemap-nv.sitemapdoc.split")
+
+// An index naming a list of sitemap files.
+//
+// `locs` are the addresses the files will be published at, in the same
+// order `split` produced them.  The caller supplies them, because this
+// package does not know where anything will be published and inventing
+// a naming scheme would be inventing a fact about somebody's web
+// server.
+//
+// ```novo
+// use sitemapdoc
+//
+// fn main() [io]
+//     let i = sitemapdoc.index_for(["https://example.org/sitemap-1.xml"])
+//     println("${list.len(i.refs)}")
+// ```
+pub fn index_for(locs: [Str]) -> SitemapIndex []
+    todo("sitemap-nv.sitemapdoc.index_for")
+
+// One index entry.
+//
+// ```novo
+// use sitemapdoc
+//
+// fn main() [io]
+//     println(sitemapdoc.sitemap_ref("https://example.org/sitemap-1.xml").lastmod)
+// ```
+pub fn sitemap_ref(loc: Str) -> SitemapRef []
+    todo("sitemap-nv.sitemapdoc.sitemap_ref")
+
+// The same entry with a `lastmod`.
+//
+// ```novo
+// use sitemapdoc
+//
+// fn main() [io]
+//     let r = sitemapdoc.ref_with_lastmod(
+//                 sitemapdoc.sitemap_ref("https://example.org/sitemap-1.xml"), "2026-09-17")
+//     println(r.lastmod)
+// ```
+pub fn ref_with_lastmod(r: SitemapRef, w3c_datetime: Str) -> SitemapRef []
+    todo("sitemap-nv.sitemapdoc.ref_with_lastmod")
+
+// An index from a list of entries.
+//
+// ```novo
+// use sitemapdoc
+//
+// fn main() [io]
+//     println("${list.len(sitemapdoc.index([]).refs)}")
+// ```
+pub fn index(refs: [SitemapRef]) -> SitemapIndex []
+    todo("sitemap-nv.sitemapdoc.index")
+
+// The kind's name as the root element spells it: `"urlset"` or
+// `"sitemapindex"`.
+//
+// ```novo
+// use sitemapdoc
+//
+// fn main() [io]
+//     println(sitemapdoc.kind_name(SitemapIndexKind))
+// ```
+pub fn kind_name(k: SitemapKind) -> Str []
+    todo("sitemap-nv.sitemapdoc.kind_name")
+
+// Every URL in a set that does not sit under the same path prefix as
+// the sitemap file itself.
+//
+// The protocol's cross-submission rule: a sitemap at
+// `https://example.org/shop/sitemap.xml` may name URLs under
+// `https://example.org/shop/` and no others, and a search engine
+// ignores the ones that break it.  This is the check that finds them
+// before they are published, and it takes the file's own address
+// because nothing here knows where the file will go.
+//
+// The answer is the offending URLs, so a message can name them.
+//
+// ```novo
+// use sitemapdoc
+// use sitemapurl
+//
+// fn main() [io]
+//     let s = sitemapurl.urlset([sitemapurl.url("https://example.org/a")])
+//     println("${list.len(sitemapdoc.check_prefix(s, "https://example.org/sitemap.xml"))}")
+// ```
+pub fn check_prefix(s: sitemapurl.SitemapSet, sitemap_loc: Str) -> [Str] []
+    todo("sitemap-nv.sitemapdoc.check_prefix")
+
+// The namespace every sitemap document declares:
+// `http://www.sitemaps.org/schemas/sitemap/0.9`.
+//
+// The writer emits it and the reader accepts a document with it, with
+// another, or with none — see the README's rules.  It is public
+// because a caller assembling a document with elements from an
+// extension needs the base namespace beside theirs.
+//
+// ```novo
+// use sitemapdoc
+//
+// fn main() [io]
+//     println(sitemapdoc.namespace())
+// ```
+pub fn namespace() -> Str []
+    todo("sitemap-nv.sitemapdoc.namespace")

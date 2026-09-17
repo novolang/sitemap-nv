@@ -1,0 +1,122 @@
+// sitemapdoc_tests.nv — the two limits as a report, and the index.
+//
+// RED ON PURPOSE: every assertion reaches `not implemented:
+// sitemap-nv.sitemapdoc.<fn>` or a function it calls.  What is
+// asserted is that being over a limit is a report and not an error,
+// that splitting keeps the order, and that the cross-submission rule
+// is checked against the file's own address.
+
+use std.test
+use sitemapdoc
+use sitemapurl
+
+fn page_url(i: Int) -> sitemapurl.SitemapUrl
+    sitemapurl.url("https://example.org/page-${i}")
+
+fn many(count: Int) -> sitemapurl.SitemapSet
+    sitemapurl.urlset(list.map(list.range(count), page_url))
+
+@test
+fn test_the_limits_are_the_protocols() [io]
+    let l = sitemapdoc.limits()
+
+    test.case("fifty thousand entries")
+    test.assert(l.max_entries == 50000)
+
+    test.case("and fifty megabytes, counted at 1048576 bytes to the megabyte")
+    test.assert(l.max_bytes == 52428800)
+
+    test.case("a caller may choose less, because the protocol's numbers are a maximum")
+    let mine = sitemapdoc.limits_of(10000, 5242880)
+    test.assert(mine.max_entries == 10000)
+    test.assert(mine.max_bytes == 5242880)
+
+@test
+fn test_being_over_a_limit_is_a_report_and_not_a_failure() [io]
+    // A site with more pages than fit does not have a broken sitemap.
+    // It has one that must be split, which is a different situation
+    // and wants a different answer.
+    test.case("a small set conforms and needs one file")
+    let small = sitemapdoc.check(many(3), sitemapdoc.limits())
+    test.assert(small.entries == 3)
+    test.assert(not small.over_entries)
+    test.assert(not small.over_bytes)
+    test.assert(small.files_needed == 1)
+    test.assert(sitemapdoc.conforms(small))
+
+    test.case("a set over the entry limit says how far over, and how many files")
+    let big = sitemapdoc.check(many(25), sitemapdoc.limits_of(10, 52428800))
+    test.assert(big.entries == 25)
+    test.assert(big.over_entries)
+    test.assert(big.files_needed == 3)
+    test.assert(not sitemapdoc.conforms(big))
+
+    test.case("the byte count is there whether or not it is over")
+    test.assert(small.bytes > 0)
+    test.assert(not small.over_bytes)
+
+@test
+fn test_splitting_keeps_the_order_and_always_answers_a_list() [io]
+    // So a caller writes the same loop whether or not the set was
+    // over.
+    test.case("a conforming set is a list of one")
+    let parts = sitemapdoc.split(many(3), sitemapdoc.limits())
+    test.assert(list.len(parts) == 1)
+    test.assert(list.len(parts[0].urls) == 3)
+
+    test.case("an over-sized set is split into as many as it takes")
+    let split = sitemapdoc.split(many(25), sitemapdoc.limits_of(10, 52428800))
+    test.assert(list.len(split) == 3)
+    test.assert(list.len(split[0].urls) == 10)
+    test.assert(list.len(split[2].urls) == 5)
+
+    test.case("and the order is kept across the files")
+    test.assert(split[0].urls[0].loc == "https://example.org/page-0")
+    test.assert(split[1].urls[0].loc == "https://example.org/page-10")
+
+@test
+fn test_an_index_names_files_and_is_capped_the_same_way() [io]
+    test.case("an index from the addresses the files will be published at")
+    let i = sitemapdoc.index_for(["https://example.org/sitemap-1.xml",
+                                  "https://example.org/sitemap-2.xml"])
+    test.assert(list.len(i.refs) == 2)
+    test.assert(i.refs[0].loc == "https://example.org/sitemap-1.xml")
+    test.assert(i.refs[0].lastmod == "")
+
+    test.case("an entry can carry a lastmod")
+    let dated = sitemapdoc.ref_with_lastmod(
+                    sitemapdoc.sitemap_ref("https://example.org/sitemap-1.xml"), "2026-09-17")
+    test.assert(dated.lastmod == "2026-09-17")
+
+    test.case("an index is a list of entries")
+    test.assert(list.len(sitemapdoc.index([dated]).refs) == 1)
+
+    test.case("and it is capped at fifty thousand entries too")
+    let report = sitemapdoc.check_index(i, sitemapdoc.limits())
+    test.assert(report.entries == 2)
+    test.assert(not report.over_entries)
+
+    test.case("the two kinds are named the way the root element spells them")
+    test.assert(sitemapdoc.kind_name(SitemapUrlsetKind) == "urlset")
+    test.assert(sitemapdoc.kind_name(SitemapIndexKind) == "sitemapindex")
+
+@test
+fn test_the_cross_submission_rule_is_checked_against_the_files_own_address() [io]
+    // A sitemap may only name URLs under its own path prefix, and a
+    // search engine ignores the ones that break it — silently.
+    let s = sitemapurl.urlset([sitemapurl.url("https://example.org/shop/a"),
+                               sitemapurl.url("https://example.org/blog/b"),
+                               sitemapurl.url("https://other.example/c")])
+
+    test.case("the URLs outside the prefix are named, so a message can list them")
+    let bad = sitemapdoc.check_prefix(s, "https://example.org/shop/sitemap.xml")
+    test.assert(list.len(bad) == 2)
+    test.assert(bad[0] == "https://example.org/blog/b")
+
+    test.case("and a sitemap at the root of a site covers all of it")
+    test.assert(list.len(sitemapdoc.check_prefix(s, "https://example.org/sitemap.xml")) == 1)
+
+@test
+fn test_the_namespace_is_available_to_a_caller_that_needs_it_beside_its_own() [io]
+    test.case("the 0.9 namespace, spelled once")
+    test.assert(sitemapdoc.namespace() == "http://www.sitemaps.org/schemas/sitemap/0.9")

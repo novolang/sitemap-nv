@@ -1,0 +1,266 @@
+// sitemapurl.nv — one `url` element, with its three optional children
+// typed.
+//
+// PRIORITY IS THOUSANDTHS, NOT A FRACTION
+//
+// The protocol writes `priority` as a decimal between 0.0 and 1.0,
+// which is a float in the file, and a float does not round-trip: a
+// sitemap read and written again would change its own numbers.  So the
+// value is carried as an integer count of thousandths — `500` is the
+// default `0.5` — and rendered with as few digits as represent it
+// exactly.  Thousandths is finer than any search engine distinguishes
+// and finer than any writer in the field emits.
+//
+// LASTMOD IS THE TEXT IT WILL CARRY
+//
+// `lastmod` is a W3C Datetime, which is a date with optional time and
+// an optional zone offset.  This package declares no effects, so it
+// can neither read a clock nor hold a calendar, and it does not know
+// whether the date exists.  `is_datetime_shaped` is the only judgement
+// made about it: whether a reader will parse it.
+//
+// CHANGEFREQ IS AN ENUM BECAUSE IT IS A CLOSED LIST
+//
+// The protocol names seven values and no others, and a search engine
+// meeting an eighth ignores the element.  An enum is therefore the
+// honest type, and a reader meeting an eighth answers
+// `SitemapBadChangefreq` naming what was written rather than silently
+// dropping it, so a site generator finds its own typo.
+
+// How often the page at a URL is likely to change.
+//
+// The seven values of the protocol, and no others.  Every one of them
+// is a hint: the protocol is explicit that a search engine may crawl
+// on a different schedule, and `SitemapAlways` in particular is
+// documented as being for pages that change every time they are
+// accessed.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     println(sitemapurl.changefreq_text(SitemapWeekly))
+// ```
+pub enum SitemapChangefreq
+    // The element was not present.  Not the same as any of the seven:
+    // absent means the site said nothing, and a writer must not invent
+    // a value for it.
+    SitemapUnstated
+    // `always`: the page changes every time it is accessed.
+    SitemapAlways
+    // `hourly`.
+    SitemapHourly
+    // `daily`.
+    SitemapDaily
+    // `weekly`.
+    SitemapWeekly
+    // `monthly`.
+    SitemapMonthly
+    // `yearly`.
+    SitemapYearly
+    // `never`: an archived page.  The protocol notes that a crawler
+    // may still revisit one.
+    SitemapNever
+
+// One `url` element.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     println(sitemapurl.url("https://example.org/a").loc)
+// ```
+pub struct SitemapUrl
+    // The `loc` element: an absolute URL, at most 2,048 characters.
+    // The one child the protocol requires.
+    loc: Str
+    // The `lastmod` element, verbatim, or `""`.  A W3C Datetime; see
+    // the note at the top of this module on why it is text.
+    lastmod: Str
+    // The `changefreq` element, or `SitemapUnstated`.
+    changefreq: SitemapChangefreq
+    // The `priority` element in thousandths: `500` is `0.5`.  `-1`
+    // when the element was not present, which is not the same as `0`
+    // — a priority of zero is a page the site is telling a crawler to
+    // rank last, and an absent one means the default applies.
+    priority_milli: Int
+
+// A whole `urlset` document.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     println("${list.len(sitemapurl.urlset([]).urls)}")
+// ```
+pub struct SitemapSet
+    // The URLs, in the order the file gives them.
+    urls: [SitemapUrl]
+
+// A URL with nothing else set: no `lastmod`, no `changefreq`, no
+// `priority`.
+//
+// The starting value every other builder narrows, and the one a site
+// generator that has only a list of pages uses.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     println("${sitemapurl.url("https://example.org/a").priority_milli}")
+// ```
+pub fn url(loc: Str) -> SitemapUrl []
+    todo("sitemap-nv.sitemapurl.url")
+
+// The same URL with a `lastmod`.
+//
+// The text is written as it is given.  `is_datetime_shaped` is
+// available for a caller that wants to check it first.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     let u = sitemapurl.with_lastmod(sitemapurl.url("https://example.org/a"), "2026-09-17")
+//     println(u.lastmod)
+// ```
+pub fn with_lastmod(u: SitemapUrl, w3c_datetime: Str) -> SitemapUrl []
+    todo("sitemap-nv.sitemapurl.with_lastmod")
+
+// The same URL with a `changefreq`.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     let u = sitemapurl.with_changefreq(sitemapurl.url("https://example.org/a"), SitemapDaily)
+//     println(sitemapurl.changefreq_text(u.changefreq))
+// ```
+pub fn with_changefreq(u: SitemapUrl, freq: SitemapChangefreq) -> SitemapUrl []
+    todo("sitemap-nv.sitemapurl.with_changefreq")
+
+// The same URL with a `priority`, in thousandths.
+//
+// A value outside `0` to `1000` is clamped into it rather than
+// refused: the protocol's range is a range, a caller that computed
+// `1200` meant "as high as possible", and refusing would turn an
+// arithmetic slip into a failed build.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     let u = sitemapurl.with_priority(sitemapurl.url("https://example.org/a"), 800)
+//     println("${u.priority_milli}")
+// ```
+pub fn with_priority(u: SitemapUrl, milli: Int) -> SitemapUrl []
+    todo("sitemap-nv.sitemapurl.with_priority")
+
+// A `urlset` from a list of URLs.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     let s = sitemapurl.urlset([sitemapurl.url("https://example.org/a")])
+//     println("${list.len(s.urls)}")
+// ```
+pub fn urlset(urls: [SitemapUrl]) -> SitemapSet []
+    todo("sitemap-nv.sitemapurl.urlset")
+
+// The changefreq's text as the protocol writes it: `"weekly"`, and so
+// on.  `SitemapUnstated` is `""`.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     println(sitemapurl.changefreq_text(SitemapUnstated))
+// ```
+pub fn changefreq_text(freq: SitemapChangefreq) -> Str []
+    todo("sitemap-nv.sitemapurl.changefreq_text")
+
+// The changefreq a text names, or `None`.
+//
+// `None` for an eighth value, which is what makes
+// `SitemapBadChangefreq` possible: a reader that mapped an unknown
+// word onto `SitemapUnstated` would hide a site's own typo.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     match sitemapurl.changefreq_named("weekly")
+//         Some(freq) => println(sitemapurl.changefreq_text(freq))
+//         None       => println("not one of the seven")
+// ```
+pub fn changefreq_named(text: Str) -> ?SitemapChangefreq []
+    todo("sitemap-nv.sitemapurl.changefreq_named")
+
+// A priority in thousandths as the `priority` element writes it:
+// `500` is `"0.5"`, `1000` is `"1.0"`, `125` is `"0.125"`.
+//
+// As few digits as represent the value exactly, so a sitemap read and
+// written again holds the same text for every priority a real writer
+// produces.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     println(sitemapurl.priority_text(500))
+// ```
+pub fn priority_text(milli: Int) -> Str []
+    todo("sitemap-nv.sitemapurl.priority_text")
+
+// A `priority` element's text as thousandths, or `None`.
+//
+// `None` for anything that is not a decimal between 0.0 and 1.0
+// inclusive.  Digits beyond a thousandth are truncated rather than
+// rounded, so a document read and written again holds the same number.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     match sitemapurl.priority_of("0.8")
+//         Some(milli) => println("${milli}")
+//         None        => println("not a priority")
+// ```
+pub fn priority_of(text: Str) -> ?Int []
+    todo("sitemap-nv.sitemapurl.priority_of")
+
+// Whether a `lastmod` has the shape of a W3C Datetime.
+//
+// The protocol's date format: a complete date `YYYY-MM-DD`, optionally
+// followed by a time and a zone offset or `Z`.  A shape check and
+// nothing more — this package holds no calendar, so `2026-02-30` is
+// shaped and is not a day.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     println("${sitemapurl.is_datetime_shaped("2026-09-17")}")
+//     println("${sitemapurl.is_datetime_shaped("17 September 2026")}")
+// ```
+pub fn is_datetime_shaped(text: Str) -> Bool []
+    todo("sitemap-nv.sitemapurl.is_datetime_shaped")
+
+// Why a `loc` is not acceptable, or `""` when it is.
+//
+// The protocol requires an absolute URL — a scheme and an authority —
+// of at most 2,048 characters, and says every URL in one file must
+// begin with the same path prefix as the file itself.  The first two
+// are checked here; the third needs the file's own address, which is
+// `sitemapdoc.check_prefix`.
+//
+// ```novo
+// use sitemapurl
+//
+// fn main() [io]
+//     println(sitemapurl.loc_problem("https://example.org/a"))
+//     println(sitemapurl.loc_problem("/a"))
+// ```
+pub fn loc_problem(loc: Str) -> Str []
+    todo("sitemap-nv.sitemapurl.loc_problem")

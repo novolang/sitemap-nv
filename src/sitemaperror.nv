@@ -1,0 +1,119 @@
+// sitemaperror.nv — why a sitemap is refused, and whether the fault is
+// in the file or in the document being built.
+//
+// THE LIMITS ARE NOT FAULTS
+//
+// Exceeding fifty thousand URLs is not an error in a sitemap; it is a
+// fact about a document that has to be split before it is written.
+// That is `sitemapdoc.check`, which answers a report, and it is
+// deliberately not in this enum: a caller that has too many URLs has
+// something to do about it, and a caller holding an error value does
+// not.
+//
+// What is in here is the file that cannot be read and the document
+// that cannot be written.
+
+// Why a sitemap could not be read or could not be written.
+//
+// ```novo
+// use sitemaperror
+//
+// fn main() [io]
+//     println(SitemapWrongRoot("rss").message())
+// ```
+pub enum SitemapFault
+    // The text is not well-formed XML.  `at` is the byte offset the
+    // parser stopped at and `why` is its own description.  A READ
+    // fault.
+    SitemapNotXml(at: Int, why: Str)
+    // The root element is neither `urlset` nor `sitemapindex`.
+    // `found` is the element that was there, so a message can say what
+    // the file actually is.  A READ fault.
+    SitemapWrongRoot(found: Str)
+    // A `url` or a `sitemap` element has no `loc` child.  `loc` is the
+    // one element the protocol requires, and an entry without one
+    // names nothing.  A READ fault.
+    SitemapMissingLoc(entry_index: Int)
+    // A `changefreq` element holds something that is not one of the
+    // seven values the protocol defines.  `text` is what was written.
+    // A READ fault.
+    SitemapBadChangefreq(text: Str)
+    // A `priority` element is not a number between 0.0 and 1.0.
+    // `text` is what was written.  A READ fault.
+    SitemapBadPriority(text: Str)
+    // A `lastmod` element is not a W3C Datetime.  `text` is what was
+    // written.  A READ fault.
+    SitemapBadLastmod(text: Str)
+    // A `loc` is not an absolute URL, or is longer than the 2,048
+    // characters the protocol allows.  `text` is what was written.  A
+    // READ fault when a file is being read and a WRITE fault when a
+    // document is being built.
+    SitemapBadLoc(text: Str, why: Str)
+    // Text handed to the writer holds a character XML 1.0 section 2.2
+    // does not admit.  `at` is its byte offset within that text.  A
+    // WRITE fault.
+    SitemapUnwritable(element: Str, at: Int, byte_value: Int)
+
+// `SitemapFault` is an `Error`, which is what lets
+// `Result<T, SitemapFault>` exist at all (SPEC section 3.4).
+impl Error for SitemapFault
+    // The one-line message, naming what was found and where.
+    //
+    // Panics with `not implemented` until the bodies land.
+    fn message(self) -> Str
+        todo("sitemap-nv.SitemapFault.message")
+
+// Whether this fault is in the document being WRITTEN rather than in a
+// file being read.
+//
+// True for `SitemapUnwritable`, and for `SitemapBadLoc` when it was
+// raised by the writer.  A crawler reading somebody else's sitemap
+// logs a read fault and carries on; a site generator stops on a write
+// fault, because it is about to publish a file no search engine will
+// accept.
+//
+// ```novo
+// use sitemaperror
+//
+// fn main() [io]
+//     let mine = SitemapUnwritable("loc", 4, 1)
+//     println("${sitemaperror.is_writer_fault(mine)}")
+// ```
+pub fn is_writer_fault(f: SitemapFault) -> Bool []
+    todo("sitemap-nv.sitemaperror.is_writer_fault")
+
+// A short stable code for a log or a metric label: `"not_xml"`,
+// `"bad_priority"`, `"unwritable"`, and the rest.
+//
+// Free of anything the document carried, so it is safe as a metric
+// label — a URL in one would put a site's own paths into a time series
+// database.
+//
+// ```novo
+// use sitemaperror
+//
+// fn main() [io]
+//     println(sitemaperror.code(SitemapWrongRoot("rss")))
+// ```
+pub fn code(f: SitemapFault) -> Str []
+    todo("sitemap-nv.sitemaperror.code")
+
+// Whether a reader could carry on past this fault by dropping the one
+// entry it is about.
+//
+// True for the faults about a single `url` element —  a bad
+// `changefreq`, a bad `priority`, a bad `lastmod`, a missing or bad
+// `loc`.  False for the two about the document as a whole.  A crawler
+// reading a sitemap with one broken entry in fifty thousand wants the
+// other 49,999, and `sitemapread.read_lenient` is what this answer is
+// for.
+//
+// ```novo
+// use sitemaperror
+//
+// fn main() [io]
+//     println("${sitemaperror.is_entry_fault(SitemapBadPriority("high"))}")
+//     println("${sitemaperror.is_entry_fault(SitemapWrongRoot("rss"))}")
+// ```
+pub fn is_entry_fault(f: SitemapFault) -> Bool []
+    todo("sitemap-nv.sitemaperror.is_entry_fault")

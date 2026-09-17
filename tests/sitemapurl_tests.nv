@@ -1,0 +1,144 @@
+// sitemapurl_tests.nv — the three optional children, typed.
+//
+// RED ON PURPOSE: every assertion reaches `not implemented:
+// sitemap-nv.sitemapurl.<fn>`.  What is asserted is that an absent
+// element is told apart from a present one with a low value, that a
+// priority survives a round trip, and that an eighth changefreq is not
+// silently swallowed.
+
+use std.test
+use sitemapurl
+
+@test
+fn test_a_url_starts_with_nothing_set_and_says_so() [io]
+    // Absent is not the same as low.  A writer that emitted a default
+    // for every URL would be telling a search engine that the site had
+    // ranked its pages when it had not.
+    let u = sitemapurl.url("https://example.org/a")
+
+    test.case("the one element the protocol requires")
+    test.assert(u.loc == "https://example.org/a")
+
+    test.case("and the three optional ones, each absent")
+    test.assert(u.lastmod == "")
+    test.assert(sitemapurl.changefreq_text(u.changefreq) == "")
+    test.assert(u.priority_milli == 0 - 1)
+
+    test.case("an absent priority is not a priority of zero")
+    let lowest = sitemapurl.with_priority(u, 0)
+    test.assert(lowest.priority_milli == 0)
+    test.assert(lowest.priority_milli != u.priority_milli)
+
+@test
+fn test_each_builder_changes_one_thing() [io]
+    let u = sitemapurl.url("https://example.org/a")
+
+    test.case("a lastmod is written as it was given")
+    test.assert(sitemapurl.with_lastmod(u, "2026-09-17").lastmod == "2026-09-17")
+
+    test.case("a changefreq")
+    let daily = sitemapurl.with_changefreq(u, SitemapDaily)
+    test.assert(sitemapurl.changefreq_text(daily.changefreq) == "daily")
+    test.assert(daily.loc == u.loc)
+
+    test.case("and a priority, in thousandths")
+    test.assert(sitemapurl.with_priority(u, 800).priority_milli == 800)
+
+    test.case("a value outside the range is clamped, not refused")
+    test.assert(sitemapurl.with_priority(u, 1200).priority_milli == 1000)
+    test.assert(sitemapurl.with_priority(u, 0 - 5).priority_milli == 0)
+
+    test.case("a set is a list of them")
+    test.assert(list.len(sitemapurl.urlset([u, daily]).urls) == 2)
+
+@test
+fn test_a_priority_is_thousandths_so_it_round_trips() [io]
+    // The element is a decimal in the file, which is a float, and a
+    // float does not round-trip.
+    test.case("the default, and the two ends")
+    test.assert(sitemapurl.priority_text(500) == "0.5")
+    test.assert(sitemapurl.priority_text(1000) == "1.0")
+    test.assert(sitemapurl.priority_text(0) == "0.0")
+
+    test.case("as few digits as represent the value exactly")
+    test.assert(sitemapurl.priority_text(125) == "0.125")
+    test.assert(sitemapurl.priority_text(800) == "0.8")
+
+    test.case("and read back to the same number")
+    match sitemapurl.priority_of("0.8")
+        Some(milli) => test.assert(milli == 800)
+        None        => test.fail("0.8 is a priority")
+    match sitemapurl.priority_of("1.0")
+        Some(milli) => test.assert(milli == 1000)
+        None        => test.fail("1.0 is a priority")
+
+    test.case("digits beyond a thousandth are truncated, not rounded")
+    match sitemapurl.priority_of("0.5009")
+        Some(milli) => test.assert(milli == 500)
+        None        => test.fail("this is still a number")
+
+    test.case("and anything outside the range is not a priority at all")
+    match sitemapurl.priority_of("1.5")
+        Some(_) => test.fail("the range is 0.0 to 1.0")
+        None    => test.assert(true)
+    match sitemapurl.priority_of("high")
+        Some(_) => test.fail("that is not a number")
+        None    => test.assert(true)
+
+@test
+fn test_there_are_seven_changefreq_values_and_an_eighth_is_not_one() [io]
+    // A reader that mapped an unknown word onto "unstated" would hide
+    // a site's own typo.
+    test.case("the seven the protocol defines")
+    test.assert(sitemapurl.changefreq_text(SitemapAlways) == "always")
+    test.assert(sitemapurl.changefreq_text(SitemapHourly) == "hourly")
+    test.assert(sitemapurl.changefreq_text(SitemapDaily) == "daily")
+    test.assert(sitemapurl.changefreq_text(SitemapWeekly) == "weekly")
+    test.assert(sitemapurl.changefreq_text(SitemapMonthly) == "monthly")
+    test.assert(sitemapurl.changefreq_text(SitemapYearly) == "yearly")
+    test.assert(sitemapurl.changefreq_text(SitemapNever) == "never")
+
+    test.case("and they read back")
+    match sitemapurl.changefreq_named("monthly")
+        Some(freq) => test.assert(sitemapurl.changefreq_text(freq) == "monthly")
+        None       => test.fail("monthly is one of the seven")
+
+    test.case("an eighth is None, which is what makes the fault possible")
+    match sitemapurl.changefreq_named("fortnightly")
+        Some(_) => test.fail("there are seven")
+        None    => test.assert(true)
+
+    test.case("and the absent case is a value, not a missing one")
+    test.assert(sitemapurl.changefreq_text(SitemapUnstated) == "")
+
+@test
+fn test_a_lastmod_is_checked_for_shape_and_nothing_more() [io]
+    // This package holds no calendar, so it knows whether a reader
+    // will parse the text and not whether the day existed.
+    test.case("a complete date")
+    test.assert(sitemapurl.is_datetime_shaped("2026-09-17"))
+
+    test.case("a date with a time and a zone")
+    test.assert(sitemapurl.is_datetime_shaped("2026-09-17T09:41:00Z"))
+    test.assert(sitemapurl.is_datetime_shaped("2026-09-17T09:41:00+02:00"))
+
+    test.case("a day nobody had is still shaped")
+    test.assert(sitemapurl.is_datetime_shaped("2026-02-30"))
+
+    test.case("and anything else is not")
+    test.assert(not sitemapurl.is_datetime_shaped("17 September 2026"))
+    test.assert(not sitemapurl.is_datetime_shaped(""))
+
+@test
+fn test_a_loc_must_be_an_absolute_url_within_the_length_limit() [io]
+    test.case("an ordinary URL has no problem")
+    test.assert(sitemapurl.loc_problem("https://example.org/a") == "")
+
+    test.case("a relative one does, and the answer says what")
+    test.assert(sitemapurl.loc_problem("/a") != "")
+
+    test.case("so does one with no authority")
+    test.assert(sitemapurl.loc_problem("https:///a") != "")
+
+    test.case("and an empty one")
+    test.assert(sitemapurl.loc_problem("") != "")

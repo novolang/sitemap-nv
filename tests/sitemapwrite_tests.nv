@@ -1,0 +1,143 @@
+// sitemapwrite_tests.nv — what the writer leaves out, and what it
+// refuses.
+//
+// RED ON PURPOSE: every assertion reaches `not implemented:
+// sitemap-nv.sitemapwrite.<fn>` or a function it calls.  What is
+// asserted is that an unset element is not written as a default, that
+// an ampersand in a URL is escaped, and that the byte count a caller
+// splits by is available without writing the document.
+
+use std.test
+use sitemapdoc
+use sitemaperror
+use sitemapurl
+use sitemapwrite
+
+@test
+fn test_the_defaults_are_what_a_search_engine_expects() [io]
+    let o = sitemapwrite.options()
+
+    test.case("a declaration, because the protocol requires UTF-8 and this says so")
+    test.assert(o.declaration)
+
+    test.case("the 0.9 namespace on the root element")
+    test.assert(o.namespace)
+
+    test.case("and an indent, for a human opening the file")
+    test.assert(o.indent == 2)
+
+    test.case("compact is what a site with fifty thousand URLs wants")
+    test.assert(sitemapwrite.compact().indent == 0)
+    test.assert(not sitemapwrite.compact().declaration)
+
+    test.case("and the namespace can be left off, for a document embedded in another")
+    test.assert(not sitemapwrite.without_namespace(o).namespace)
+
+@test
+fn test_an_element_that_was_never_set_is_not_written() [io]
+    // A writer that emitted `<priority>0.5</priority>` for every URL
+    // would be telling a search engine the site had ranked its pages
+    // when it had not.
+    let bare = sitemapurl.urlset([sitemapurl.url("https://example.org/a")])
+
+    match sitemapwrite.to_str(bare, sitemapwrite.compact())
+        Err(fault) => test.fail(fault.message())
+        Ok(text)   =>
+            test.case("the loc is there")
+            test.assert(str.contains(text, "<loc>https://example.org/a</loc>"))
+
+            test.case("and nothing else is")
+            test.assert(not str.contains(text, "priority"))
+            test.assert(not str.contains(text, "changefreq"))
+            test.assert(not str.contains(text, "lastmod"))
+
+    test.case("a URL that set them writes them")
+    let full = sitemapurl.urlset([sitemapurl.with_priority(
+                   sitemapurl.with_changefreq(
+                       sitemapurl.url("https://example.org/a"), SitemapDaily),
+                       800)])
+    match sitemapwrite.to_str(full, sitemapwrite.compact())
+        Err(fault) => test.fail(fault.message())
+        Ok(text)   =>
+            test.assert(str.contains(text, "<priority>0.8</priority>"))
+            test.assert(str.contains(text, "<changefreq>daily</changefreq>"))
+
+@test
+fn test_an_ampersand_in_a_url_is_escaped() [io]
+    // The single most common defect in a hand-written sitemap: a file
+    // that looks right and that no parser will read.
+    let s = sitemapurl.urlset([sitemapurl.url("https://example.org/a?x=1&y=2")])
+
+    match sitemapwrite.to_str(s, sitemapwrite.compact())
+        Err(fault) => test.fail(fault.message())
+        Ok(text)   =>
+            test.case("written as a character reference")
+            test.assert(str.contains(text, "x=1&amp;y=2"))
+
+@test
+fn test_a_character_xml_cannot_carry_is_refused_rather_than_emitted() [io]
+    // It reaches a sitemap through a URL built from a file name, and a
+    // file name can hold anything.
+    let s = sitemapurl.urlset([sitemapurl.url("https://example.org/a\u{1}b")])
+
+    test.case("the writer names the element and the offset")
+    match sitemapwrite.write_urlset([], s, sitemapwrite.options())
+        Ok(_)      => test.fail("a control character cannot be written")
+        Err(fault) =>
+            test.assert(sitemaperror.code(fault) == "unwritable")
+            test.assert(sitemaperror.is_writer_fault(fault))
+
+    test.case("and a relative loc is refused too, because the protocol requires an absolute one")
+    match sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.url("/a")]),
+                                    sitemapwrite.options())
+        Ok(_)      => test.fail("a relative URL is not a loc")
+        Err(fault) => test.assert(sitemaperror.code(fault) == "bad_loc")
+
+@test
+fn test_the_limits_are_not_checked_by_the_writer() [io]
+    // `sitemapdoc.check` is that question.  A caller that wants an
+    // over-sized file written — for a test, or because it is about to
+    // split it — gets one.
+    test.case("a set over a small limit still writes")
+    let s = sitemapurl.urlset([sitemapurl.url("https://example.org/a"),
+                               sitemapurl.url("https://example.org/b")])
+    test.assert(sitemapdoc.check(s, sitemapdoc.limits_of(1, 10)).over_entries)
+    match sitemapwrite.write_urlset([], s, sitemapwrite.options())
+        Ok(bytes)  => test.assert(list.len(bytes) > 0)
+        Err(fault) => test.fail(fault.message())
+
+@test
+fn test_a_document_can_be_written_one_url_at_a_time() [io]
+    // A sitemap at the limit is fifty megabytes, which is why the
+    // buffer form and the streaming form both exist.
+    let o = sitemapwrite.options()
+
+    test.case("the open tag, an entry, and the close tag")
+    test.assert(list.len(sitemapwrite.write_open([], SitemapUrlsetKind, o)) > 0)
+    match sitemapwrite.write_url([], sitemapurl.url("https://example.org/a"), o)
+        Ok(bytes)  => test.assert(list.len(bytes) > 0)
+        Err(fault) => test.fail(fault.message())
+    test.assert(list.len(sitemapwrite.write_close([], SitemapUrlsetKind, o)) > 0)
+
+    test.case("an index writes the same way")
+    match sitemapwrite.write_index([], sitemapdoc.index_for(["https://example.org/s-1.xml"]), o)
+        Ok(bytes)  => test.assert(list.len(bytes) > 0)
+        Err(fault) => test.fail(fault.message())
+
+@test
+fn test_the_byte_count_is_available_without_writing_the_document() [io]
+    // What a caller filling a file up to the limit one URL at a time
+    // needs, and what `sitemapdoc.check` estimates from.
+    let o = sitemapwrite.compact()
+    let u = sitemapurl.url("https://example.org/a")
+
+    test.case("per entry")
+    test.assert(sitemapwrite.url_byte_length(u, o) > 0)
+
+    test.case("and for a whole set, larger than the entry alone")
+    let s = sitemapurl.urlset([u])
+    test.assert(sitemapwrite.byte_length(s, o) > sitemapwrite.url_byte_length(u, o))
+
+    test.case("an indented document is larger than a compact one")
+    test.assert(sitemapwrite.byte_length(s, sitemapwrite.options())
+                > sitemapwrite.byte_length(s, o))

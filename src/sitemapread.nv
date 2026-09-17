@@ -1,0 +1,178 @@
+// sitemapread.nv — a sitemap somebody else wrote.
+//
+// TWO READERS, BECAUSE THERE ARE TWO CALLERS
+//
+// A site generator reading back its own sitemap wants every fault
+// reported: a bad `priority` is its own bug and it should stop.  A
+// crawler reading somebody else's wants the 49,999 entries that are
+// fine and a note about the one that is not.
+//
+// `read` is the first and `read_lenient` is the second.  Neither is a
+// mode on the other, because a mode flag is a decision made by whoever
+// wrote the call and read by nobody.
+//
+// WHAT IS TOLERATED
+//
+// The namespace is accepted whether it is the 0.9 one, an old one, or
+// absent: sitemaps in the field carry all three and a reader that
+// insisted would refuse files every search engine accepts.  Elements
+// from the news, image and video extensions are ignored rather than
+// refused, as are comments, a byte-order mark and unknown attributes.
+//
+// WHAT IS NOT
+//
+// A root element that is neither `urlset` nor `sitemapindex`, and an
+// entry with no `loc`.  Both mean the file is not what it claims to
+// be, and carrying on would produce a document with entries that name
+// nothing.
+
+use sitemaperror
+use sitemapdoc
+use sitemapurl
+use xmltree
+
+// A document read into either of the two forms.
+//
+// A file is a `urlset` or a `sitemapindex` and never both, so this
+// carries whichever it was.
+//
+// ```novo
+// use sitemapread
+//
+// fn main() [io]
+//     match sitemapread.read("<urlset><url><loc>https://example.org/</loc></url></urlset>")
+//         Ok(doc)    => println("${list.len(doc.urls.urls)}")
+//         Err(fault) => println(fault.message())
+// ```
+pub struct SitemapDocument
+    // Which of the two this is.
+    kind: sitemapdoc.SitemapKind
+    // The URLs, empty when this is an index.
+    urls: sitemapurl.SitemapSet
+    // The sitemap files, empty when this is a URL set.
+    index: sitemapdoc.SitemapIndex
+    // Entries the reader dropped, with the fault each was dropped for.
+    // Always empty from `read`, which refuses instead; this is how
+    // `read_lenient` reports what it skipped.
+    skipped: [sitemaperror.SitemapFault]
+
+// A document, with every fault refused.
+//
+// What a site generator reading back its own output wants: a bad
+// `priority` is its own bug.
+//
+// ```novo
+// use sitemapread
+//
+// fn main() [io]
+//     match sitemapread.read("<sitemapindex></sitemapindex>")
+//         Ok(doc)    => println("${list.len(doc.index.refs)}")
+//         Err(fault) => println(fault.message())
+// ```
+pub fn read(source: Str) -> Result<SitemapDocument, sitemaperror.SitemapFault> []
+    todo("sitemap-nv.sitemapread.read")
+
+// A document, with a broken entry dropped and recorded.
+//
+// What a crawler reading somebody else's sitemap wants.  A fault about
+// the document as a whole — not XML, wrong root — is still refused,
+// because there is nothing to carry on with.
+//
+// ```novo
+// use sitemapread
+//
+// fn main() [io]
+//     match sitemapread.read_lenient("<urlset><url></url></urlset>")
+//         Ok(doc)    => println("${list.len(doc.skipped)} entry dropped")
+//         Err(fault) => println(fault.message())
+// ```
+pub fn read_lenient(source: Str) -> Result<SitemapDocument, sitemaperror.SitemapFault> []
+    todo("sitemap-nv.sitemapread.read_lenient")
+
+// A document from an already-parsed tree.
+//
+// The parse is the expensive half, and a caller that parsed the
+// document for another reason should not pay for it twice.
+//
+// ```novo
+// use sitemapread
+// use xmltree
+//
+// fn main() [io]
+//     let doc = xmltree.build("<urlset></urlset>")
+//     match sitemapread.read_document(doc)
+//         Ok(read)   => println("${list.len(read.urls.urls)}")
+//         Err(fault) => println(fault.message())
+// ```
+pub fn read_document(doc: xmltree.XmlDocument) -> Result<SitemapDocument, sitemaperror.SitemapFault> []
+    todo("sitemap-nv.sitemapread.read_document")
+
+// Which of the two documents a tree is, or `None` when it is neither.
+//
+// The cheap question a crawler asks before it reads anything: an index
+// sends it to fetch more files and a URL set does not.
+//
+// ```novo
+// use sitemapdoc
+// use sitemapread
+// use xmltree
+//
+// fn main() [io]
+//     match sitemapread.kind_of(xmltree.build("<urlset></urlset>"))
+//         Some(kind) => println(sitemapdoc.kind_name(kind))
+//         None       => println("not a sitemap")
+// ```
+pub fn kind_of(doc: xmltree.XmlDocument) -> ?sitemapdoc.SitemapKind []
+    todo("sitemap-nv.sitemapread.kind_of")
+
+// One `url` element, by its node index in a tree.
+//
+// For a caller walking a large document itself rather than building
+// fifty thousand values it will use two fields of.
+//
+// ```novo
+// use sitemapread
+// use xmltree
+//
+// fn main() [io]
+//     let doc = xmltree.build("<url><loc>https://example.org/</loc></url>")
+//     match sitemapread.read_url(doc, xmltree.root(doc))
+//         Ok(u)      => println(u.loc)
+//         Err(fault) => println(fault.message())
+// ```
+pub fn read_url(doc: xmltree.XmlDocument,
+                index: Int) -> Result<sitemapurl.SitemapUrl, sitemaperror.SitemapFault> []
+    todo("sitemap-nv.sitemapread.read_url")
+
+// One `sitemap` element of an index, by its node index.
+//
+// ```novo
+// use sitemapread
+// use xmltree
+//
+// fn main() [io]
+//     let doc = xmltree.build("<sitemap><loc>https://example.org/s.xml</loc></sitemap>")
+//     match sitemapread.read_ref(doc, xmltree.root(doc))
+//         Ok(r)      => println(r.loc)
+//         Err(fault) => println(fault.message())
+// ```
+pub fn read_ref(doc: xmltree.XmlDocument,
+                index: Int) -> Result<sitemapdoc.SitemapRef, sitemaperror.SitemapFault> []
+    todo("sitemap-nv.sitemapread.read_ref")
+
+// Every `url` or `sitemap` node index in a document, in document
+// order.
+//
+// The walk `read` does, offered on its own for a caller that wants the
+// nodes rather than the values.
+//
+// ```novo
+// use sitemapread
+// use xmltree
+//
+// fn main() [io]
+//     let doc = xmltree.build("<urlset><url><loc>https://a.example/</loc></url></urlset>")
+//     println("${list.len(sitemapread.entry_nodes(doc))}")
+// ```
+pub fn entry_nodes(doc: xmltree.XmlDocument) -> [Int] []
+    todo("sitemap-nv.sitemapread.entry_nodes")

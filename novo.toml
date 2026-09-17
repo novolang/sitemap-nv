@@ -1,0 +1,47 @@
+[package]
+name        = "sitemap-nv"
+version     = "0.0.1"
+description = "The sitemaps.org 0.9 protocol both ways: a URL set with lastmod, changefreq and priority as typed fields rather than text, the sitemap index form, and the 50,000-entry and 50 MB limits answered as a report over a document rather than discovered when a search engine refuses the file."
+license     = "Apache-2.0"
+
+# An INTERFACE release: every `pub fn` body is a `todo()`, so the
+# signatures and the effect rows are published and nothing is
+# implemented.  `novo pkg publish` recognises the shape and requires
+# both the draft stability and the 0.0.x version; the first
+# implementation is the 0.1.0 published over it.
+stability   = "draft"
+
+# `core`.  A sitemap is built from values the caller already holds and
+# written into the caller's buffer, and reading one is arithmetic over
+# a string.  Nothing is fetched: a sitemap index names other files and
+# this package never follows one, which is a security property as much
+# as a layer one — a sitemap is a document written by whoever owns the
+# site and its `loc` elements are not addresses a library should visit.
+layer       = "core"
+
+category    = "web"
+
+tags        = ["sitemap", "sitemaps-org", "sitemap-index", "seo", "crawler", "xml", "web"]
+repository  = "https://github.com/novolang/sitemap-nv"
+maintainers = ["novo-lang"]
+novo        = ">= 0.9.0"
+
+# A library: no `main`, so `novo pkg build` type-checks and
+# effect-checks every module under `src/` and writes no binary.
+
+[docs.pages]
+"README.md" = "sitemaps.org 0.9 both ways, with the two limits as a report"
+
+[dependencies]
+# xml-nv is the XML, both directions.  A sitemap is an XML document
+# with a namespace, and the two places a hand-rolled writer goes wrong
+# are both xml-nv's job already: escaping a `loc` that holds an
+# ampersand, which is every URL with a query string in it, and refusing
+# a character XML 1.0 cannot carry rather than emitting a file a
+# search engine will reject without saying why.
+#
+# Reading needs the same parser for the opposite reason: sitemaps in
+# the field carry comments, a byte-order mark, unexpected namespaces
+# and elements from the news, image and video extensions, and a reader
+# that scanned for tags rather than parsing would trip over all four.
+xml-nv = "^0.0.1"
