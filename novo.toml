@@ -44,4 +44,4 @@ novo        = ">= 0.9.0"
 # the field carry comments, a byte-order mark, unexpected namespaces
 # and elements from the news, image and video extensions, and a reader
 # that scanned for tags rather than parsing would trip over all four.
-xml-nv = "^0.0.1"
+xml-nv = "^0.0.2"

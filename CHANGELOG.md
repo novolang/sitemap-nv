@@ -44,7 +44,7 @@ doc comment; every body is `todo()`; the release is recorded
 - `novo test` is red, and that is the release's expected state: every
   assertion in the API suite reaches `not implemented:
   sitemap-nv.<module>.<fn>`.
-- **xml-nv is itself an interface at 0.0.1.** This package cannot be
+- **xml-nv is itself an interface at 0.0.2.** This package cannot be
   implemented before its parser and writer have bodies. The escaping is
   the reason it is a dependency: an unescaped ampersand in a `loc` is
   the most common defect in a hand-written sitemap, and xml-nv already
