@@ -1,0 +1,95 @@
+// protocol_tests.nv — the sitemaps.org protocol's own examples,
+// verbatim.
+//
+// The three samples are copied from https://www.sitemaps.org/protocol.html
+// as the page renders them, with a blank line between elements.  The
+// page indents with no-break spaces and puts blank lines before the
+// declaration; here the indent is spaces and the declaration comes
+// first, since XML allows nothing before it.  Each
+// is read, and written back with a three-space indent; the page's text
+// with its blank lines and trailing spaces removed is what the writer
+// produces.
+
+use std.test
+use std.str
+use sitemapdoc
+use sitemapread
+use sitemapurl
+use sitemapwrite
+
+fn page_one() -> Str
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n\n   <url>\n\n      <loc>http://www.example.com/</loc>\n\n      <lastmod>2005-01-01</lastmod>\n\n      <changefreq>monthly</changefreq>\n\n      <priority>0.8</priority>\n\n   </url>\n\n</urlset> \n\n"
+
+fn page_five() -> Str
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n\n   <url>\n\n      <loc>http://www.example.com/</loc>\n\n      <lastmod>2005-01-01</lastmod>\n\n      <changefreq>monthly</changefreq>\n\n      <priority>0.8</priority>\n\n   </url>\n\n   <url>\n\n      <loc>http://www.example.com/catalog?item=12&amp;desc=vacation_hawaii</loc>\n\n      <changefreq>weekly</changefreq>\n\n   </url>\n\n   <url>\n\n      <loc>http://www.example.com/catalog?item=73&amp;desc=vacation_new_zealand</loc>\n\n      <lastmod>2004-12-23</lastmod>\n\n      <changefreq>weekly</changefreq>\n\n   </url>\n\n   <url>\n\n      <loc>http://www.example.com/catalog?item=74&amp;desc=vacation_newfoundland</loc>\n\n      <lastmod>2004-12-23T18:00:15+00:00</lastmod>\n\n      <priority>0.3</priority>\n\n   </url>\n\n   <url>\n\n      <loc>http://www.example.com/catalog?item=83&amp;desc=vacation_usa</loc>\n\n      <lastmod>2004-11-23</lastmod>\n\n   </url>\n\n</urlset>\n\n"
+
+fn page_index() -> Str
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\n<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n\n   <sitemap>\n\n      <loc>http://www.example.com/sitemap1.xml.gz</loc>\n\n      <lastmod>2004-10-01T18:23:17+00:00</lastmod>\n\n   </sitemap>\n\n   <sitemap>\n\n      <loc>http://www.example.com/sitemap2.xml.gz</loc>\n\n      <lastmod>2005-01-01</lastmod>\n\n   </sitemap>\n\n</sitemapindex>\n\n"
+
+fn tight_one() -> Str
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n   <url>\n      <loc>http://www.example.com/</loc>\n      <lastmod>2005-01-01</lastmod>\n      <changefreq>monthly</changefreq>\n      <priority>0.8</priority>\n   </url>\n</urlset>\n"
+
+fn tight_five() -> Str
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n   <url>\n      <loc>http://www.example.com/</loc>\n      <lastmod>2005-01-01</lastmod>\n      <changefreq>monthly</changefreq>\n      <priority>0.8</priority>\n   </url>\n   <url>\n      <loc>http://www.example.com/catalog?item=12&amp;desc=vacation_hawaii</loc>\n      <changefreq>weekly</changefreq>\n   </url>\n   <url>\n      <loc>http://www.example.com/catalog?item=73&amp;desc=vacation_new_zealand</loc>\n      <lastmod>2004-12-23</lastmod>\n      <changefreq>weekly</changefreq>\n   </url>\n   <url>\n      <loc>http://www.example.com/catalog?item=74&amp;desc=vacation_newfoundland</loc>\n      <lastmod>2004-12-23T18:00:15+00:00</lastmod>\n      <priority>0.3</priority>\n   </url>\n   <url>\n      <loc>http://www.example.com/catalog?item=83&amp;desc=vacation_usa</loc>\n      <lastmod>2004-11-23</lastmod>\n   </url>\n</urlset>\n"
+
+fn tight_index() -> Str
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n   <sitemap>\n      <loc>http://www.example.com/sitemap1.xml.gz</loc>\n      <lastmod>2004-10-01T18:23:17+00:00</lastmod>\n   </sitemap>\n   <sitemap>\n      <loc>http://www.example.com/sitemap2.xml.gz</loc>\n      <lastmod>2005-01-01</lastmod>\n   </sitemap>\n</sitemapindex>\n"
+
+fn three() -> SitemapWriteOptions
+    SitemapWriteOptions { indent: 3, declaration: true, namespace: true }
+
+fn written(r: Result<Str, SitemapFault>) -> Str
+    match r
+        Ok(t)  => t
+        Err(f) => f.message()
+
+@test
+fn test_the_one_url_sample() [io]
+    match sitemapread.read(page_one())
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            let u = doc.urls.urls[0]
+            test.assert_eq(u.loc, "http://www.example.com/")
+            test.assert_eq(u.lastmod, "2005-01-01")
+            test.assert_eq(sitemapurl.changefreq_text(u.changefreq), "monthly")
+            test.assert_eq(u.priority_milli, 800)
+            test.assert_eq(written(sitemapwrite.to_str(doc.urls, three())), tight_one())
+
+@test
+fn test_the_five_url_sample() [io]
+    match sitemapread.read(page_five())
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 5)
+            let second = doc.urls.urls[1]
+            test.assert_eq(second.loc, "http://www.example.com/catalog?item=12&desc=vacation_hawaii")
+            test.assert_eq(second.priority_milli, 0 - 1)
+            let fourth = doc.urls.urls[3]
+            test.assert_eq(fourth.lastmod, "2004-12-23T18:00:15+00:00")
+            test.assert_eq(fourth.priority_milli, 300)
+            test.assert_eq(written(sitemapwrite.to_str(doc.urls, three())), tight_five())
+
+@test
+fn test_the_index_sample() [io]
+    match sitemapread.read(page_index())
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "sitemapindex")
+            let first = doc.index.refs[0]
+            test.assert_eq(first.loc, "http://www.example.com/sitemap1.xml.gz")
+            test.assert_eq(first.lastmod, "2004-10-01T18:23:17+00:00")
+            match sitemapwrite.write_index([], doc.index, three())
+                Ok(b)  => test.assert_eq(list.len(b), str.len(tight_index()))
+                Err(f) => test.fail(f.message())
+            test.assert_eq(sitemapwrite.index_byte_length(doc.index, three()), str.len(tight_index()))
+
+@test
+fn test_the_entity_escaping_sample() [io]
+    // The protocol's example of a URL escaped for a sitemap.
+    let u = sitemapurl.url("http://www.example.com/%C3%BCmlat.php&q=name")
+    let t = written(sitemapwrite.to_str(sitemapurl.urlset([u]), sitemapwrite.compact()))
+    test.assert(str.contains(t, "<loc>http://www.example.com/%C3%BCmlat.php&amp;q=name</loc>"))
+    test.case("and the four other entities of the protocol's table")
+    let v = sitemapurl.url("http://example.org/'\"<>")
+    let w = written(sitemapwrite.to_str(sitemapurl.urlset([v]), sitemapwrite.compact()))
+    test.assert(str.contains(w, "<loc>http://example.org/&apos;&quot;&lt;&gt;</loc>"))

@@ -1,8 +1,6 @@
 // sitemapread_tests.nv — two readers, because there are two callers.
 //
-// RED ON PURPOSE: every assertion reaches `not implemented:
-// sitemap-nv.sitemapread.<fn>` or a function it calls.  What is
-// asserted is that `read` refuses what `read_lenient` drops, that both
+// The suite asserts that `read` refuses what `read_lenient` drops, that both
 // root forms are recognised, and that the namespace is tolerated
 // whether it is there or not.
 

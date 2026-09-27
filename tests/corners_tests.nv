@@ -1,0 +1,139 @@
+// corners_tests.nv — each refusal of the readers and the writer, and
+// the shapes a W3C Datetime and a loc may not take.
+
+use std.test
+use std.list
+use std.str
+use xmltree
+use sitemapdoc
+use sitemaperror
+use sitemapread
+use sitemapurl
+use sitemapwrite
+
+fn code_of_read(r: Result<SitemapDocument, SitemapFault>) -> Str
+    match r
+        Ok(_)  => "ok"
+        Err(f) => sitemaperror.code(f)
+
+@test
+fn test_every_entry_fault_names_what_was_written() [io]
+    let cases = [("<urlset><url><loc>/a</loc></url></urlset>", "the loc '/a' is not an absolute URL"),
+                 ("<urlset><url><loc>https://a.example/</loc><lastmod>soon</lastmod></url></urlset>",
+                  "'soon' is not a W3C Datetime"),
+                 ("<urlset><url><loc>https://a.example/</loc><changefreq>Daily</changefreq></url></urlset>",
+                  "'Daily' is not one of the seven changefreq values"),
+                 ("<urlset><url><loc>https://a.example/</loc><priority></priority></url></urlset>",
+                  "'' is not a priority between 0.0 and 1.0"),
+                 ("<sitemapindex><sitemap><loc>ftp:/x</loc></sitemap></sitemapindex>",
+                  "the loc 'ftp:/x' is not an absolute URL"),
+                 ("<sitemapindex><sitemap><loc>https://a.example/s.xml</loc><lastmod>2005-1</lastmod></sitemap></sitemapindex>",
+                  "'2005-1' is not a W3C Datetime"),
+                 ("<sitemapindex><sitemap></sitemap></sitemapindex>", "entry 0 has no loc")]
+    for c in cases
+        test.case(c.1)
+        match sitemapread.read(c.0)
+            Ok(_)  => test.fail("that entry has a fault")
+            Err(f) => test.assert_eq(f.message(), c.1)
+        match sitemapread.read_lenient(c.0)
+            Ok(doc) => test.assert_eq(list.len(doc.skipped), 1)
+            Err(f)  => test.fail(f.message())
+
+@test
+fn test_the_document_faults() [io]
+    test.assert_eq(code_of_read(sitemapread.read("")), "not_xml")
+    test.assert_eq(code_of_read(sitemapread.read("<urlset><url></urlset>")), "not_xml")
+    test.assert(sitemapread.read_document(xmltree.build("")) == Err(SitemapWrongRoot("")))
+    test.assert(sitemapread.read("<feed/>") == Err(SitemapWrongRoot("feed")))
+    test.assert(sitemapread.kind_of(xmltree.build("")) == None)
+    test.assert_eq(list.len(sitemapread.entry_nodes(xmltree.build("<rss/>"))), 0)
+    test.case("a url that is not under a root is entry 0")
+    let lone = xmltree.build("<url></url>")
+    test.assert(sitemapread.read_url(lone, xmltree.root(lone)) == Err(SitemapMissingLoc(0)))
+    test.case("an undeclared prefix is tolerated, and the entry is found by its local name")
+    match sitemapread.read("<s:urlset><s:url><s:loc> https://a.example/ </s:loc></s:url></s:urlset>")
+        Ok(doc) => test.assert_eq(doc.urls.urls[0].loc, "https://a.example/")
+        Err(f)  => test.fail(f.message())
+
+@test
+fn test_every_fault_has_its_message() [io]
+    let fs = [SitemapNotXml(3, "bad-name"), SitemapWrongRoot("rss"), SitemapMissingLoc(2),
+              SitemapBadChangefreq("x"), SitemapBadPriority("y"), SitemapBadLastmod("z"),
+              SitemapBadLoc("/a", "is not an absolute URL"), SitemapUnwritable("loc", 4, 1)]
+    test.assert_eq(list.map(fs, message_of),
+                   ["the sitemap is not well-formed XML at byte 3: bad-name",
+                    "the root element is rss, not urlset or sitemapindex",
+                    "entry 2 has no loc",
+                    "'x' is not one of the seven changefreq values",
+                    "'y' is not a priority between 0.0 and 1.0",
+                    "'z' is not a W3C Datetime",
+                    "the loc '/a' is not an absolute URL",
+                    "the loc holds character 1 at byte 4, which XML 1.0 cannot carry"])
+    test.assert(not sitemaperror.is_entry_fault(SitemapUnwritable("loc", 4, 1)))
+
+fn message_of(f: SitemapFault) -> Str
+    f.message()
+
+@test
+fn test_the_shapes_of_a_w3c_datetime() [io]
+    for t in ["2005", "2005-01", "2005-01-01", "2005-01-01T10:00Z", "2005-01-01T10:00:59.25+05:30",
+              "2005-12-31T23:59:59-11:00"]
+        test.case(t)
+        test.assert(sitemapurl.is_datetime_shaped(t))
+    for t in ["abcd", "2005-13", "2005-01-32", "2005-01-01T25:00Z", "2005-01-01T10:00:00.Z", "2005-1",
+              "2005-01-01T10:00+0100", "2005-01-01T10:00", "2005-01-01T10:60Z", "2005-01-01T10:00:61Z",
+              "2005/01/01", "2005-01-01 10:00Z", "2005-01-01T10:00+24:00"]
+        test.case(t)
+        test.assert(not sitemapurl.is_datetime_shaped(t))
+
+@test
+fn test_the_shapes_of_a_loc_and_a_priority() [io]
+    test.assert_eq(sitemapurl.loc_problem("https://a.example/" + str.repeat("x", 2048)),
+                   "is longer than 2,048 characters")
+    test.assert_eq(sitemapurl.loc_problem("1http://a.example/"), "is not an absolute URL")
+    test.assert_eq(sitemapurl.loc_problem("ht_p://a.example/"), "is not an absolute URL")
+    test.assert_eq(sitemapurl.loc_problem("https://?q"), "has no host")
+    test.assert_eq(sitemapurl.loc_problem("svn+ssh://a.example"), "")
+    test.assert(sitemapurl.priority_of("") == None)
+    test.assert(sitemapurl.priority_of(".") == None)
+    test.assert(sitemapurl.priority_of("1.000") == Some(1000))
+    test.assert(sitemapurl.priority_of("1.001") == None)
+    test.assert(sitemapurl.priority_of(".5") == Some(500))
+    test.assert(sitemapurl.priority_of("0.x") == None)
+    test.assert_eq(sitemapurl.priority_text(0 - 1), "")
+    test.assert_eq(sitemapurl.priority_text(7), "0.007")
+
+@test
+fn test_the_writer_refuses_before_it_appends() [io]
+    let o = sitemapwrite.compact()
+    let bad_ref = sitemapdoc.index([sitemapdoc.sitemap_ref("s.xml")])
+    match sitemapwrite.write_index([], bad_ref, o)
+        Ok(_)  => test.fail("a relative loc")
+        Err(f) => test.assert(f == SitemapBadLoc("s.xml", "is not an absolute URL"))
+    let bad_date = sitemapdoc.index([sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("https://a.example/s.xml"),
+                                                                 "2005\u{1}")])
+    match sitemapwrite.write_index([], bad_date, o)
+        Ok(_)  => test.fail("a control character")
+        Err(f) => test.assert(f == SitemapUnwritable("lastmod", 4, 1))
+    match sitemapwrite.write_url([], sitemapurl.url("https://a.example/\u{FFFE}"), o)
+        Ok(_)  => test.fail("U+FFFE is not an XML character")
+        Err(f) => test.assert(f == SitemapUnwritable("loc", 18, 65534))
+    match sitemapwrite.write_url([], sitemapurl.url("https://a.example/é日😀"), o)
+        Ok(b)  => test.assert_eq(list.len(b), str.len("<url><loc>https://a.example/é日😀</loc></url>"))
+        Err(f) => test.fail(f.message())
+    match sitemapwrite.to_str(sitemapurl.urlset([sitemapurl.url("x")]), o)
+        Ok(_)  => test.fail("a relative loc")
+        Err(f) => test.assert_eq(sitemaperror.code(f), "bad_loc")
+
+@test
+fn test_an_index_over_the_entry_limit() [io]
+    let i = sitemapdoc.index_for(["https://a.example/1.xml", "https://a.example/2.xml", "https://a.example/3.xml"])
+    let r = sitemapdoc.check_index(i, sitemapdoc.limits_of(1, 52428800))
+    test.assert(r.over_entries)
+    test.assert_eq(r.files_needed, 3)
+    test.assert(not sitemapdoc.conforms(r))
+    test.case("and a set over the byte limit splits by size")
+    let s = sitemapurl.urlset([sitemapurl.url("https://a.example/1"), sitemapurl.url("https://a.example/2")])
+    let small = sitemapdoc.limits_of(100, 200)
+    test.assert_eq(list.len(sitemapdoc.split(s, small)), 2)
+    test.assert(sitemapdoc.check(s, small).over_bytes)

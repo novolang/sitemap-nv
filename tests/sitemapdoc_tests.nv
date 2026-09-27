@@ -1,8 +1,6 @@
 // sitemapdoc_tests.nv — the two limits as a report, and the index.
 //
-// RED ON PURPOSE: every assertion reaches `not implemented:
-// sitemap-nv.sitemapdoc.<fn>` or a function it calls.  What is
-// asserted is that being over a limit is a report and not an error,
+// The suite asserts that being over a limit is a report and not an error,
 // that splitting keeps the order, and that the cross-submission rule
 // is checked against the file's own address.
 
@@ -71,8 +69,10 @@ fn test_splitting_keeps_the_order_and_always_answers_a_list() [io]
     test.assert(list.len(split[2].urls) == 5)
 
     test.case("and the order is kept across the files")
-    test.assert(split[0].urls[0].loc == "https://example.org/page-0")
-    test.assert(split[1].urls[0].loc == "https://example.org/page-10")
+    let first = split[0]
+    let second = split[1]
+    test.assert(first.urls[0].loc == "https://example.org/page-0")
+    test.assert(second.urls[0].loc == "https://example.org/page-10")
 
 @test
 fn test_an_index_names_files_and_is_capped_the_same_way() [io]

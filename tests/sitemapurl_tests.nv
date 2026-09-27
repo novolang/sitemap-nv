@@ -1,7 +1,6 @@
 // sitemapurl_tests.nv — the three optional children, typed.
 //
-// RED ON PURPOSE: every assertion reaches `not implemented:
-// sitemap-nv.sitemapurl.<fn>`.  What is asserted is that an absent
+// The suite asserts that an absent
 // element is told apart from a present one with a low value, that a
 // priority survives a round trip, and that an eighth changefreq is not
 // silently swallowed.

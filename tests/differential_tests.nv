@@ -1,0 +1,829 @@
+// differential_tests.nv — seeded sitemaps this package writes, as
+// Python's xml.etree.ElementTree read them.
+//
+// Written by tools/differential.py; do not edit by hand.  Seed 20260927,
+// 30 URL sets and 10 indexes.  ElementTree read every value back from
+// each document below before it was written here.  The writer must
+// produce the same text again, and both readers must read it back to
+// the same number of entries with nothing skipped.
+
+use std.test
+use std.list
+use std.bytes
+use sitemapdoc
+use sitemapread
+use sitemapurl
+use sitemapwrite
+
+fn text_of(r: Result<[u8], SitemapFault>) -> Str
+    match r
+        Ok(b)  => bytes.byte_list_to_str(list.map(b, int_of))
+        Err(f) => f.message()
+
+fn int_of(b: u8) -> Int
+    b as Int
+
+@test
+fn test_case_00() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset>\n  <url>\n    <loc>http://www.example.com/xcc96</loc>\n    <changefreq>weekly</changefreq>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([],
+        sitemapurl.urlset([sitemapurl.with_changefreq(sitemapurl.url("http://www.example.com/xcc96"), SitemapWeekly)]),
+        sitemapwrite.without_namespace(sitemapwrite.options()))),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 1)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_01() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>https://www.example.com/</loc>\n    <lastmod>2004-12-23T18:00+00:00</lastmod>\n    <changefreq>daily</changefreq>\n  </url>\n  <url>\n    <loc>https://shop.example.net:8080/-?q=1</loc>\n    <lastmod>2005-01-01</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/"), "2004-12-23T18:00+00:00"),
+        SitemapDaily),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/-?q=1"), "2005-01-01"),
+        SitemapDaily),
+    1000)]),
+    sitemapwrite.options())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 2)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_02() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>https://example.org/</loc>\n    <lastmod>2004-12-23T18:00:15+00:00</lastmod>\n    <priority>0.0</priority>\n  </url>\n  <url>\n    <loc>https://shop.example.net:8080/az9y/</loc>\n    <lastmod>2005</lastmod>\n    <changefreq>always</changefreq>\n  </url>\n  <url>\n    <loc>https://example.org/.-</loc>\n    <changefreq>never</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/"), "2004-12-23T18:00:15+00:00"),
+        0),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/az9y/"), "2005"),
+        SitemapAlways),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("https://example.org/.-"), SitemapNever), 1000)]),
+    sitemapwrite.options())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 3)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_03() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset>\n  <url>\n    <loc>http://www.example.com/0</loc>\n    <lastmod>1999-12-31T23:59:59-05:30</lastmod>\n    <changefreq>always</changefreq>\n    <priority>0.5</priority>\n  </url>\n  <url>\n    <loc>http://example.org/9~9</loc>\n    <lastmod>2005-01</lastmod>\n    <changefreq>hourly</changefreq>\n    <priority>0.5</priority>\n  </url>\n  <url>\n    <loc>https://shop.example.net:8080/ c</loc>\n    <lastmod>2004-12-23T18:00+00:00</lastmod>\n    <changefreq>never</changefreq>\n    <priority>0.0</priority>\n  </url>\n  <url>\n    <loc>https://shop.example.net:8080/c9&gt;?q=1éa#top</loc>\n    <lastmod>2004-12-23T18:00:15+00:00</lastmod>\n    <changefreq>never</changefreq>\n    <priority>0.0</priority>\n  </url>\n  <url>\n    <loc>https://www.example.com/%C3%BC&apos;_%C3%BC#top&apos;</loc>\n    <lastmod>2004-12-23T18:00:15+00:00</lastmod>\n    <changefreq>hourly</changefreq>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com/0"), "1999-12-31T23:59:59-05:30"),
+        SitemapAlways),
+    500),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://example.org/9~9"), "2005-01"), SitemapHourly),
+        500),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/ c"), "2004-12-23T18:00+00:00"),
+        SitemapNever),
+    0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/c9>?q=1éa#top"), "2004-12-23T18:00:15+00:00"),
+        SitemapNever),
+    0),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/%C3%BC'_%C3%BC#top'"), "2004-12-23T18:00:15+00:00"),
+        SitemapHourly)]),
+    sitemapwrite.without_namespace(sitemapwrite.options()))),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 5)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_04() [io]
+    let text = "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>https://www.example.com/yc5.~/%C3%BC</loc><lastmod>2005-01-01</lastmod><changefreq>yearly</changefreq><priority>1.0</priority></url><url><loc>http://shop.example.net:8080/&lt;6~&apos;8&apos;8_</loc><lastmod>2005-01-01</lastmod><changefreq>yearly</changefreq></url><url><loc>https://www.example.com/&lt;&amp;8</loc><lastmod>2004-12-23T18:00:15+00:00</lastmod><changefreq>weekly</changefreq><priority>0.5</priority></url><url><loc>https://www.example.com/a9.#top</loc><lastmod>1999-12-31T23:59:59-05:30</lastmod><changefreq>hourly</changefreq><priority>0.578</priority></url><url><loc>https://www.example.com/#top#top&gt;_z</loc><lastmod>1999-12-31T23:59:59-05:30</lastmod><changefreq>monthly</changefreq></url></urlset>"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/yc5.~/%C3%BC"), "2005-01-01"),
+        SitemapYearly),
+    1000),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://shop.example.net:8080/<6~'8'8_"), "2005-01-01"),
+        SitemapYearly),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/<&8"), "2004-12-23T18:00:15+00:00"),
+        SitemapWeekly),
+    500),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/a9.#top"), "1999-12-31T23:59:59-05:30"),
+        SitemapHourly),
+    578),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/#top#top>_z"), "1999-12-31T23:59:59-05:30"),
+        SitemapMonthly)]),
+    sitemapwrite.compact())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 5)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_05() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n   <url>\n      <loc>https://example.org/é&amp;</loc>\n      <changefreq>daily</changefreq>\n   </url>\n   <url>\n      <loc>https://shop.example.net:8080/5_68z-x29&amp;é/</loc>\n      <lastmod>1999-12-31T23:59:59-05:30</lastmod>\n      <changefreq>daily</changefreq>\n   </url>\n   <url>\n      <loc>http://www.example.com/bxc8~#top</loc>\n      <lastmod>2005-01</lastmod>\n      <changefreq>weekly</changefreq>\n      <priority>1.0</priority>\n   </url>\n   <url>\n      <loc>https://example.org/63_-9x</loc>\n      <changefreq>never</changefreq>\n      <priority>0.08</priority>\n   </url>\n   <url>\n      <loc>https://shop.example.net:8080/</loc>\n      <lastmod>2005</lastmod>\n      <changefreq>hourly</changefreq>\n      <priority>0.0</priority>\n   </url>\n   <url>\n      <loc>http://example.org/5#topy&apos;</loc>\n      <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n      <changefreq>never</changefreq>\n      <priority>0.5</priority>\n   </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_changefreq(sitemapurl.url("https://example.org/é&"), SitemapDaily), sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/5_68z-x29&é/"), "1999-12-31T23:59:59-05:30"),
+        SitemapDaily),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com/bxc8~#top"), "2005-01"),
+        SitemapWeekly),
+    1000),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("https://example.org/63_-9x"), SitemapNever), 80), sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/"), "2005"),
+        SitemapHourly),
+    0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://example.org/5#topy'"), "2026-09-27T09:41:00.5Z"),
+        SitemapNever),
+    500)]),
+    SitemapWriteOptions { indent: 3, declaration: true, namespace: true })),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 6)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_06() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset>\n  <url>\n    <loc>http://shop.example.net:8080/5?q=1&lt;..#top.#top</loc>\n    <changefreq>yearly</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("http://shop.example.net:8080/5?q=1<..#top.#top"), SitemapYearly),
+        1000)]),
+    sitemapwrite.without_namespace(sitemapwrite.options()))),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 1)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_07() [io]
+    let text = "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>https://www.example.com/</loc><lastmod>2005-01</lastmod><changefreq>never</changefreq><priority>0.963</priority></url><url><loc>http://shop.example.net:8080/?q=1</loc><lastmod>2005-01</lastmod></url><url><loc>https://example.org/9~z</loc><lastmod>1999-12-31T23:59:59-05:30</lastmod><changefreq>never</changefreq></url><url><loc>http://shop.example.net:8080/343a</loc><lastmod>1999-12-31T23:59:59-05:30</lastmod><changefreq>weekly</changefreq><priority>0.0</priority></url><url><loc>https://example.org/69?q=1b_by-7%C3%BC~&quot;</loc><lastmod>2005-01-01</lastmod><changefreq>hourly</changefreq><priority>1.0</priority></url></urlset>"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/"), "2005-01"), SitemapNever),
+        963),
+    sitemapurl.with_lastmod(sitemapurl.url("http://shop.example.net:8080/?q=1"), "2005-01"), sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/9~z"), "1999-12-31T23:59:59-05:30"),
+        SitemapNever),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://shop.example.net:8080/343a"), "1999-12-31T23:59:59-05:30"),
+        SitemapWeekly),
+    0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/69?q=1b_by-7%C3%BC~\""), "2005-01-01"),
+        SitemapHourly),
+    1000)]),
+    sitemapwrite.compact())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 5)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_08() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([]), sitemapwrite.without_namespace(sitemapwrite.options()))),
+        text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 0)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_09() [io]
+    let text = "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>http://example.org/_#topz #topc~1</loc><lastmod>2005</lastmod><changefreq>monthly</changefreq><priority>1.0</priority></url><url><loc>http://www.example.com/?q=1é/4</loc><changefreq>never</changefreq><priority>1.0</priority></url><url><loc>http://www.example.com/z&apos;5%C3%BC3&apos;0&amp;4</loc><lastmod>2005-01</lastmod><changefreq>daily</changefreq></url><url><loc>http://www.example.com/x.éa0&gt;~_&lt;&lt;</loc><lastmod>2005-01</lastmod><changefreq>daily</changefreq><priority>0.5</priority></url><url><loc>http://www.example.com/</loc><lastmod>2005-01</lastmod><changefreq>hourly</changefreq><priority>0.516</priority></url></urlset>"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://example.org/_#topz #topc~1"), "2005"),
+        SitemapMonthly),
+    1000),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("http://www.example.com/?q=1é/4"), SitemapNever),
+        1000),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com/z'5%C3%BC3'0&4"), "2005-01"),
+        SitemapDaily),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com/x.éa0>~_<<"), "2005-01"),
+        SitemapDaily),
+    500),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com/"), "2005-01"), SitemapHourly),
+        516)]),
+    sitemapwrite.compact())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 5)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_10() [io]
+    let text = "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>http://www.example.com/30b?q=1#topy5%C3%BC&amp;_</loc><changefreq>never</changefreq><priority>0.819</priority></url><url><loc>http://example.org/7a1a4&apos;?q=1éy&amp;?q=1é</loc><lastmod>2005-01-01</lastmod><changefreq>always</changefreq><priority>1.0</priority></url><url><loc>https://example.org/</loc><changefreq>monthly</changefreq><priority>0.0</priority></url><url><loc>http://example.org/</loc><lastmod>2005-01</lastmod><changefreq>yearly</changefreq><priority>1.0</priority></url></urlset>"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("http://www.example.com/30b?q=1#topy5%C3%BC&_"), SitemapNever),
+        819),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://example.org/7a1a4'?q=1éy&?q=1é"), "2005-01-01"),
+        SitemapAlways),
+    1000),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("https://example.org/"), SitemapMonthly), 0), sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://example.org/"), "2005-01"), SitemapYearly),
+        1000)]),
+    sitemapwrite.compact())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 4)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_11() [io]
+    let text = "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>http://shop.example.net:8080//&lt;2&gt;x</loc><lastmod>2004-12-23T18:00+00:00</lastmod><changefreq>never</changefreq></url><url><loc>http://shop.example.net:8080/4é?q=1c</loc><lastmod>2005</lastmod><changefreq>always</changefreq><priority>1.0</priority></url><url><loc>http://example.org/&apos;&gt;</loc><lastmod>2005-01-01</lastmod><changefreq>always</changefreq></url></urlset>"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://shop.example.net:8080//<2>x"), "2004-12-23T18:00+00:00"),
+        SitemapNever),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://shop.example.net:8080/4é?q=1c"), "2005"),
+        SitemapAlways),
+    1000),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://example.org/'>"), "2005-01-01"), SitemapAlways)]),
+    sitemapwrite.compact())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 3)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_12() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>https://www.example.com/3_0&amp;&lt;&gt;&amp;</loc>\n    <priority>0.927</priority>\n  </url>\n  <url>\n    <loc>https://example.org/&gt;8x&gt;</loc>\n    <lastmod>1999-12-31T23:59:59-05:30</lastmod>\n    <changefreq>daily</changefreq>\n  </url>\n  <url>\n    <loc>https://www.example.com/91#top_9 2&quot;&amp;é</loc>\n    <lastmod>1999-12-31T23:59:59-05:30</lastmod>\n    <priority>0.0</priority>\n  </url>\n  <url>\n    <loc>https://shop.example.net:8080/</loc>\n    <lastmod>1999-12-31T23:59:59-05:30</lastmod>\n    <changefreq>hourly</changefreq>\n    <priority>0.0</priority>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.url("https://www.example.com/3_0&<>&"), 927), sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/>8x>"), "1999-12-31T23:59:59-05:30"),
+        SitemapDaily),
+    sitemapurl.with_priority(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/91#top_9 2\"&é"), "1999-12-31T23:59:59-05:30"),
+        0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/"), "1999-12-31T23:59:59-05:30"),
+        SitemapHourly),
+    0)]),
+    sitemapwrite.options())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 4)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_13() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset>\n  <url>\n    <loc>https://example.org/&apos;3a5a&amp;3&quot;</loc>\n    <changefreq>never</changefreq>\n  </url>\n  <url>\n    <loc>https://www.example.com/&gt;3é4</loc>\n    <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n    <changefreq>never</changefreq>\n    <priority>0.0</priority>\n  </url>\n  <url>\n    <loc>http://www.example.com/cy7c&quot;.4~7</loc>\n    <changefreq>never</changefreq>\n    <priority>0.026</priority>\n  </url>\n  <url>\n    <loc>https://example.org/</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.467</priority>\n  </url>\n  <url>\n    <loc>https://example.org/é88~7/?q=1</loc>\n    <changefreq>always</changefreq>\n    <priority>0.0</priority>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_changefreq(sitemapurl.url("https://example.org/'3a5a&3\""), SitemapNever), sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/>3é4"), "2026-09-27T09:41:00.5Z"),
+        SitemapNever),
+    0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("http://www.example.com/cy7c\".4~7"), SitemapNever),
+        26),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("https://example.org/"), SitemapWeekly), 467), sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("https://example.org/é88~7/?q=1"), SitemapAlways),
+        0)]),
+    sitemapwrite.without_namespace(sitemapwrite.options()))),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 5)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_14() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset>\n  <url>\n    <loc>http://www.example.com/3</loc>\n    <changefreq>weekly</changefreq>\n    <priority>1.0</priority>\n  </url>\n  <url>\n    <loc>http://www.example.com/?q=1720</loc>\n    <lastmod>2005</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.3</priority>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("http://www.example.com/3"), SitemapWeekly), 1000), sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com/?q=1720"), "2005"),
+        SitemapWeekly),
+    300)]),
+    sitemapwrite.without_namespace(sitemapwrite.options()))),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 2)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_15() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>http://www.example.com/77/b~37&gt;</loc>\n    <lastmod>2005-01</lastmod>\n    <changefreq>never</changefreq>\n  </url>\n  <url>\n    <loc>http://example.org/547-é&amp;&lt;_</loc>\n    <lastmod>2005-01-01</lastmod>\n    <changefreq>never</changefreq>\n    <priority>0.0</priority>\n  </url>\n  <url>\n    <loc>http://www.example.com/ a3&apos;0#top&apos;&quot;%C3%BC</loc>\n    <lastmod>1999-12-31T23:59:59-05:30</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n  <url>\n    <loc>https://example.org/é6&quot;y?q=1&gt;4z4&apos;</loc>\n    <lastmod>2005-01-01</lastmod>\n    <changefreq>never</changefreq>\n  </url>\n  <url>\n    <loc>http://www.example.com/&gt;-&gt;6&lt;</loc>\n    <lastmod>2005-01-01</lastmod>\n    <changefreq>hourly</changefreq>\n  </url>\n  <url>\n    <loc>https://www.example.com/b1-3c#top 2.#top</loc>\n    <lastmod>2004-12-23T18:00+00:00</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.0</priority>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com/77/b~37>"), "2005-01"),
+        SitemapNever),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://example.org/547-é&<_"), "2005-01-01"),
+        SitemapNever),
+    0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com/ a3'0#top'\"%C3%BC"), "1999-12-31T23:59:59-05:30"),
+        SitemapDaily),
+    1000),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/é6\"y?q=1>4z4'"), "2005-01-01"),
+        SitemapNever),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com/>->6<"), "2005-01-01"),
+        SitemapHourly),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/b1-3c#top 2.#top"), "2004-12-23T18:00+00:00"),
+        SitemapWeekly),
+    0)]),
+    sitemapwrite.options())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 6)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_16() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset>\n  <url>\n    <loc>https://example.org/5#top~ 7604c&amp;&gt;8</loc>\n    <lastmod>2005-01-01</lastmod>\n    <changefreq>always</changefreq>\n    <priority>0.0</priority>\n  </url>\n  <url>\n    <loc>https://shop.example.net:8080/~&amp;x?q=1</loc>\n    <lastmod>2004-12-23T18:00+00:00</lastmod>\n    <changefreq>hourly</changefreq>\n    <priority>0.714</priority>\n  </url>\n  <url>\n    <loc>https://example.org/&apos;&lt;</loc>\n    <lastmod>1999-12-31T23:59:59-05:30</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.563</priority>\n  </url>\n  <url>\n    <loc>https://shop.example.net:8080/3é8c</loc>\n    <lastmod>1999-12-31T23:59:59-05:30</lastmod>\n    <changefreq>daily</changefreq>\n  </url>\n  <url>\n    <loc>http://shop.example.net:8080/~</loc>\n    <changefreq>monthly</changefreq>\n    <priority>0.0</priority>\n  </url>\n  <url>\n    <loc>http://www.example.com/a&lt;7_2&apos;1</loc>\n    <changefreq>never</changefreq>\n    <priority>0.5</priority>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/5#top~ 7604c&>8"), "2005-01-01"),
+        SitemapAlways),
+    0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/~&x?q=1"), "2004-12-23T18:00+00:00"),
+        SitemapHourly),
+    714),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/'<"), "1999-12-31T23:59:59-05:30"),
+        SitemapWeekly),
+    563),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/3é8c"), "1999-12-31T23:59:59-05:30"),
+        SitemapDaily),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("http://shop.example.net:8080/~"), SitemapMonthly),
+        0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("http://www.example.com/a<7_2'1"), SitemapNever),
+        500)]),
+    sitemapwrite.without_namespace(sitemapwrite.options()))),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 6)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_17() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n   <url>\n      <loc>http://example.org/5.~.6&gt;</loc>\n      <lastmod>2004-12-23T18:00+00:00</lastmod>\n      <changefreq>yearly</changefreq>\n      <priority>0.0</priority>\n   </url>\n   <url>\n      <loc>http://www.example.com/0</loc>\n      <lastmod>2005</lastmod>\n      <changefreq>yearly</changefreq>\n      <priority>1.0</priority>\n   </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://example.org/5.~.6>"), "2004-12-23T18:00+00:00"),
+        SitemapYearly),
+    0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com/0"), "2005"), SitemapYearly),
+        1000)]),
+    SitemapWriteOptions { indent: 3, declaration: true, namespace: true })),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 2)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_18() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>http://example.org/4~</loc>\n    <lastmod>2005-01-01</lastmod>\n    <changefreq>always</changefreq>\n    <priority>1.0</priority>\n  </url>\n  <url>\n    <loc>http://shop.example.net:8080/%C3%BCa?q=1x&apos;x34&amp;</loc>\n    <lastmod>2005-01</lastmod>\n    <changefreq>weekly</changefreq>\n  </url>\n  <url>\n    <loc>https://shop.example.net:8080//&apos;_9&apos;</loc>\n    <lastmod>2005-01-01</lastmod>\n    <changefreq>never</changefreq>\n    <priority>0.0</priority>\n  </url>\n  <url>\n    <loc>http://example.org/1 xé813&amp;&gt;</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.0</priority>\n  </url>\n  <url>\n    <loc>https://shop.example.net:8080/4~50%C3%BC&quot;z3a0</loc>\n    <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.965</priority>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://example.org/4~"), "2005-01-01"), SitemapAlways),
+        1000),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://shop.example.net:8080/%C3%BCa?q=1x'x34&"), "2005-01"),
+        SitemapWeekly),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080//'_9'"), "2005-01-01"),
+        SitemapNever),
+    0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("http://example.org/1 xé813&>"), SitemapDaily), 0), sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/4~50%C3%BC\"z3a0"), "2026-09-27T09:41:00.5Z"),
+        SitemapDaily),
+    965)]),
+    sitemapwrite.options())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 5)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_19() [io]
+    let text = "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>http://www.example.com/05 a62?q=1yc33c</loc><lastmod>2004-12-23T18:00:15+00:00</lastmod><changefreq>weekly</changefreq><priority>0.636</priority></url><url><loc>https://example.org/</loc><lastmod>1999-12-31T23:59:59-05:30</lastmod><changefreq>yearly</changefreq><priority>0.0</priority></url><url><loc>https://example.org/7#top?q=12</loc><lastmod>2005-01</lastmod><changefreq>always</changefreq><priority>1.0</priority></url><url><loc>http://www.example.com/</loc><lastmod>2005-01</lastmod><changefreq>weekly</changefreq><priority>0.0</priority></url><url><loc>https://www.example.com/&amp;%C3%BC0&quot;9#top/é5&gt; 3</loc><lastmod>2005-01</lastmod><changefreq>always</changefreq><priority>0.0</priority></url></urlset>"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com/05 a62?q=1yc33c"), "2004-12-23T18:00:15+00:00"),
+        SitemapWeekly),
+    636),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/"), "1999-12-31T23:59:59-05:30"),
+        SitemapYearly),
+    0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/7#top?q=12"), "2005-01"),
+        SitemapAlways),
+    1000),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com/"), "2005-01"), SitemapWeekly),
+        0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/&%C3%BC0\"9#top/é5> 3"), "2005-01"),
+        SitemapAlways),
+    0)]),
+    sitemapwrite.compact())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 5)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_20() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>http://example.org/4.b</loc>\n    <changefreq>monthly</changefreq>\n  </url>\n  <url>\n    <loc>http://example.org/ -y#top</loc>\n    <changefreq>always</changefreq>\n  </url>\n  <url>\n    <loc>https://example.org/é.8b0</loc>\n    <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n    <priority>0.5</priority>\n  </url>\n  <url>\n    <loc>https://www.example.com/</loc>\n    <lastmod>2005-01-01</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.5</priority>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_changefreq(sitemapurl.url("http://example.org/4.b"), SitemapMonthly), sitemapurl.with_changefreq(sitemapurl.url("http://example.org/ -y#top"), SitemapAlways), sitemapurl.with_priority(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/é.8b0"), "2026-09-27T09:41:00.5Z"),
+        500),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/"), "2005-01-01"),
+        SitemapDaily),
+    500)]),
+    sitemapwrite.options())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 4)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_21() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset>\n  <url>\n    <loc>http://example.org/&gt;_38%C3%BC&apos;x_.#top</loc>\n    <lastmod>2005-01-01</lastmod>\n    <changefreq>hourly</changefreq>\n    <priority>0.0</priority>\n  </url>\n  <url>\n    <loc>http://shop.example.net:8080//b2x 3&gt;_9</loc>\n    <lastmod>1999-12-31T23:59:59-05:30</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.0</priority>\n  </url>\n  <url>\n    <loc>http://example.org/b_a8.14381/</loc>\n    <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n    <changefreq>hourly</changefreq>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://example.org/>_38%C3%BC'x_.#top"), "2005-01-01"),
+        SitemapHourly),
+    0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://shop.example.net:8080//b2x 3>_9"), "1999-12-31T23:59:59-05:30"),
+        SitemapWeekly),
+    0),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://example.org/b_a8.14381/"), "2026-09-27T09:41:00.5Z"),
+        SitemapHourly)]),
+    sitemapwrite.without_namespace(sitemapwrite.options()))),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 3)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_22() [io]
+    let text = "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>https://example.org/9zxxa%C3%BC</loc><lastmod>2005-01-01</lastmod><changefreq>hourly</changefreq><priority>1.0</priority></url><url><loc>http://example.org/éa1cx~98#top</loc><changefreq>monthly</changefreq><priority>1.0</priority></url><url><loc>http://example.org/1&gt;#top#top51#top c</loc><lastmod>2005-01-01</lastmod><changefreq>hourly</changefreq></url><url><loc>https://shop.example.net:8080/%C3%BC&apos;57cb</loc><lastmod>2026-09-27T09:41:00.5Z</lastmod><changefreq>always</changefreq><priority>0.5</priority></url></urlset>"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/9zxxa%C3%BC"), "2005-01-01"),
+        SitemapHourly),
+    1000),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("http://example.org/éa1cx~98#top"), SitemapMonthly),
+        1000),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://example.org/1>#top#top51#top c"), "2005-01-01"),
+        SitemapHourly),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/%C3%BC'57cb"), "2026-09-27T09:41:00.5Z"),
+        SitemapAlways),
+    500)]),
+    sitemapwrite.compact())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 4)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_23() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n   <url>\n      <loc>http://www.example.com/61b2_6-</loc>\n      <changefreq>yearly</changefreq>\n   </url>\n   <url>\n      <loc>http://example.org/4?q=1?q=1..c7</loc>\n      <changefreq>yearly</changefreq>\n      <priority>1.0</priority>\n   </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_changefreq(sitemapurl.url("http://www.example.com/61b2_6-"), SitemapYearly), sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("http://example.org/4?q=1?q=1..c7"), SitemapYearly),
+        1000)]),
+    SitemapWriteOptions { indent: 3, declaration: true, namespace: true })),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 2)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_24() [io]
+    let text = "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>http://shop.example.net:8080/1&apos;-6/xc03%C3%BC</loc><lastmod>2005-01</lastmod><changefreq>weekly</changefreq></url><url><loc>https://www.example.com/-&quot;2%C3%BC&lt;.&quot;7&gt;z</loc><lastmod>1999-12-31T23:59:59-05:30</lastmod><changefreq>weekly</changefreq><priority>0.0</priority></url><url><loc>https://example.org/y&quot;z%C3%BC&gt;8~&gt;yb</loc><lastmod>2004-12-23T18:00:15+00:00</lastmod><changefreq>monthly</changefreq><priority>1.0</priority></url><url><loc>https://example.org/#topc0a.~?q=1x&quot;8%C3%BC</loc><lastmod>2005</lastmod><changefreq>always</changefreq><priority>0.0</priority></url><url><loc>https://www.example.com/6y</loc><changefreq>yearly</changefreq><priority>1.0</priority></url></urlset>"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://shop.example.net:8080/1'-6/xc03%C3%BC"), "2005-01"),
+        SitemapWeekly),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/-\"2%C3%BC<.\"7>z"), "1999-12-31T23:59:59-05:30"),
+        SitemapWeekly),
+    0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/y\"z%C3%BC>8~>yb"), "2004-12-23T18:00:15+00:00"),
+        SitemapMonthly),
+    1000),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/#topc0a.~?q=1x\"8%C3%BC"), "2005"),
+        SitemapAlways),
+    0),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("https://www.example.com/6y"), SitemapYearly), 1000)]),
+    sitemapwrite.compact())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 5)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_25() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset>\n  <url>\n    <loc>https://www.example.com/~#top%C3%BC</loc>\n    <lastmod>2004-12-23T18:00+00:00</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.0</priority>\n  </url>\n  <url>\n    <loc>https://www.example.com/5-5_-c..</loc>\n    <lastmod>2005-01</lastmod>\n    <priority>0.5</priority>\n  </url>\n  <url>\n    <loc>http://www.example.com/2</loc>\n    <changefreq>yearly</changefreq>\n  </url>\n  <url>\n    <loc>https://shop.example.net:8080/a~-~yaac&gt;</loc>\n    <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n    <changefreq>hourly</changefreq>\n  </url>\n  <url>\n    <loc>https://shop.example.net:8080/&amp;</loc>\n    <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n    <priority>0.0</priority>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/~#top%C3%BC"), "2004-12-23T18:00+00:00"),
+        SitemapDaily),
+    0),
+    sitemapurl.with_priority(sitemapurl.with_lastmod(sitemapurl.url("https://www.example.com/5-5_-c.."), "2005-01"), 500), sitemapurl.with_changefreq(sitemapurl.url("http://www.example.com/2"), SitemapYearly), sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/a~-~yaac>"), "2026-09-27T09:41:00.5Z"),
+        SitemapHourly),
+    sitemapurl.with_priority(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/&"), "2026-09-27T09:41:00.5Z"),
+        0)]),
+    sitemapwrite.without_namespace(sitemapwrite.options()))),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 5)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_26() [io]
+    let text = "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>http://shop.example.net:8080/&lt;29&amp;9</loc><lastmod>2004-12-23T18:00+00:00</lastmod><changefreq>daily</changefreq><priority>0.86</priority></url></urlset>"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://shop.example.net:8080/<29&9"), "2004-12-23T18:00+00:00"),
+        SitemapDaily),
+    860)]),
+    sitemapwrite.compact())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 1)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_27() [io]
+    let text = "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>http://shop.example.net:8080/a&apos;4?q=1&lt;68&amp;</loc><lastmod>2026-09-27T09:41:00.5Z</lastmod><changefreq>yearly</changefreq></url><url><loc>http://www.example.com/50~</loc><lastmod>2026-09-27T09:41:00.5Z</lastmod><changefreq>monthly</changefreq></url><url><loc>https://example.org/185éa78_z1</loc><lastmod>1999-12-31T23:59:59-05:30</lastmod><changefreq>weekly</changefreq><priority>0.275</priority></url><url><loc>http://shop.example.net:8080/~</loc><changefreq>hourly</changefreq><priority>0.611</priority></url></urlset>"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://shop.example.net:8080/a'4?q=1<68&"), "2026-09-27T09:41:00.5Z"),
+        SitemapYearly),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com/50~"), "2026-09-27T09:41:00.5Z"),
+        SitemapMonthly),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/185éa78_z1"), "1999-12-31T23:59:59-05:30"),
+        SitemapWeekly),
+    275),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.url("http://shop.example.net:8080/~"), SitemapHourly),
+        611)]),
+    sitemapwrite.compact())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 4)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_28() [io]
+    let text = "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>http://www.example.com//7</loc><lastmod>2026-09-27T09:41:00.5Z</lastmod><changefreq>hourly</changefreq><priority>1.0</priority></url></urlset>"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://www.example.com//7"), "2026-09-27T09:41:00.5Z"),
+        SitemapHourly),
+    1000)]),
+    sitemapwrite.compact())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 1)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_29() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset>\n  <url>\n    <loc>https://shop.example.net:8080/~</loc>\n    <lastmod>1999-12-31T23:59:59-05:30</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>1.0</priority>\n  </url>\n  <url>\n    <loc>https://example.org/513</loc>\n    <lastmod>2005</lastmod>\n    <changefreq>daily</changefreq>\n  </url>\n  <url>\n    <loc>http://shop.example.net:8080/?q=1~</loc>\n    <lastmod>2004-12-23T18:00+00:00</lastmod>\n    <changefreq>daily</changefreq>\n  </url>\n  <url>\n    <loc>http://shop.example.net:8080/~~?q=1&gt;?q=1b&gt;4/&apos;#top</loc>\n    <lastmod>2005-01-01</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>0.5</priority>\n  </url>\n</urlset>\n"
+    test.assert_eq(text_of(sitemapwrite.write_urlset([], sitemapurl.urlset([sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://shop.example.net:8080/~"), "1999-12-31T23:59:59-05:30"),
+        SitemapMonthly),
+    1000),
+    sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("https://example.org/513"), "2005"), SitemapDaily), sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://shop.example.net:8080/?q=1~"), "2004-12-23T18:00+00:00"),
+        SitemapDaily),
+    sitemapurl.with_priority(sitemapurl.with_changefreq(sitemapurl.with_lastmod(sitemapurl.url("http://shop.example.net:8080/~~?q=1>?q=1b>4/'#top"), "2005-01-01"),
+        SitemapMonthly),
+    500)]),
+    sitemapwrite.without_namespace(sitemapwrite.options()))),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.urls.urls), 4)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "urlset")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_30() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n   <sitemap>\n      <loc>https://www.example.com/&gt;?q=1&apos;&amp;~ .xml</loc>\n      <lastmod>2004-12-23T18:00+00:00</lastmod>\n   </sitemap>\n</sitemapindex>\n"
+    test.assert_eq(text_of(sitemapwrite.write_index([],
+        sitemapdoc.index([sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("https://www.example.com/>?q=1'&~ .xml"), "2004-12-23T18:00+00:00")]),
+        SitemapWriteOptions { indent: 3, declaration: true, namespace: true })),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.index.refs), 1)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "sitemapindex")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_31() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n</sitemapindex>\n"
+    test.assert_eq(text_of(sitemapwrite.write_index([], sitemapdoc.index([]), sitemapwrite.options())), text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.index.refs), 0)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "sitemapindex")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_32() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <sitemap>\n    <loc>https://example.org/&gt;b#top&apos;-.xml</loc>\n  </sitemap>\n  <sitemap>\n    <loc>https://www.example.com/#topa8&amp;&apos;.xml</loc>\n    <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n  </sitemap>\n  <sitemap>\n    <loc>http://www.example.com/&lt;a&gt;y&lt;&amp;z&amp;&gt;cc.xml</loc>\n    <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n  </sitemap>\n  <sitemap>\n    <loc>http://www.example.com//~yx&apos;&apos;%C3%BC#top.&amp; .xml</loc>\n    <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n  </sitemap>\n</sitemapindex>\n"
+    test.assert_eq(text_of(sitemapwrite.write_index([], sitemapdoc.index([sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("https://example.org/>b#top'-.xml"), ""), sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("https://www.example.com/#topa8&'.xml"), "2026-09-27T09:41:00.5Z"), sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("http://www.example.com/<a>y<&z&>cc.xml"), "2026-09-27T09:41:00.5Z"), sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("http://www.example.com//~yx''%C3%BC#top.& .xml"),
+        "2026-09-27T09:41:00.5Z")]),
+    sitemapwrite.options())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.index.refs), 4)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "sitemapindex")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_33() [io]
+    let text = "<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"></sitemapindex>"
+    test.assert_eq(text_of(sitemapwrite.write_index([], sitemapdoc.index([]), sitemapwrite.compact())), text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.index.refs), 0)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "sitemapindex")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_34() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <sitemap>\n    <loc>https://www.example.com/y4-/.xml</loc>\n    <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n  </sitemap>\n  <sitemap>\n    <loc>https://www.example.com/&apos;xy~&apos;.xml</loc>\n    <lastmod>1999-12-31T23:59:59-05:30</lastmod>\n  </sitemap>\n</sitemapindex>\n"
+    test.assert_eq(text_of(sitemapwrite.write_index([], sitemapdoc.index([sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("https://www.example.com/y4-/.xml"), "2026-09-27T09:41:00.5Z"),
+        sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("https://www.example.com/'xy~'.xml"), "1999-12-31T23:59:59-05:30")]),
+    sitemapwrite.options())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.index.refs), 2)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "sitemapindex")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_35() [io]
+    let text = "<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><sitemap><loc>http://shop.example.net:8080/3-&gt;2.xml</loc><lastmod>2005-01-01</lastmod></sitemap><sitemap><loc>http://www.example.com/&quot;&gt;#top5.xml</loc><lastmod>2005</lastmod></sitemap><sitemap><loc>https://example.org/y/7/&lt;.xml</loc><lastmod>2005-01</lastmod></sitemap></sitemapindex>"
+    test.assert_eq(text_of(sitemapwrite.write_index([], sitemapdoc.index([sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("http://shop.example.net:8080/3->2.xml"), "2005-01-01"),
+        sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("http://www.example.com/\">#top5.xml"), "2005"),
+        sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("https://example.org/y/7/<.xml"), "2005-01")]),
+    sitemapwrite.compact())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.index.refs), 3)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "sitemapindex")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_36() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <sitemap>\n    <loc>http://shop.example.net:8080/0%C3%BC6 2&lt;_ &amp;.xml</loc>\n    <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n  </sitemap>\n</sitemapindex>\n"
+    test.assert_eq(text_of(sitemapwrite.write_index([], sitemapdoc.index([sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("http://shop.example.net:8080/0%C3%BC6 2<_ &.xml"),
+        "2026-09-27T09:41:00.5Z")]),
+    sitemapwrite.options())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.index.refs), 1)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "sitemapindex")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_37() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <sitemap>\n    <loc>https://www.example.com/5.xml</loc>\n    <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n  </sitemap>\n</sitemapindex>\n"
+    test.assert_eq(text_of(sitemapwrite.write_index([],
+        sitemapdoc.index([sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("https://www.example.com/5.xml"), "2026-09-27T09:41:00.5Z")]),
+        sitemapwrite.options())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.index.refs), 1)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "sitemapindex")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_38() [io]
+    let text = "<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><sitemap><loc>http://example.org/%C3%BC?q=1&amp;&gt;312c~.xml</loc><lastmod>2026-09-27T09:41:00.5Z</lastmod></sitemap><sitemap><loc>http://example.org/y.xml</loc><lastmod>2005</lastmod></sitemap></sitemapindex>"
+    test.assert_eq(text_of(sitemapwrite.write_index([], sitemapdoc.index([sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("http://example.org/%C3%BC?q=1&>312c~.xml"), "2026-09-27T09:41:00.5Z"),
+        sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("http://example.org/y.xml"), "2005")]),
+    sitemapwrite.compact())),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.index.refs), 2)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "sitemapindex")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)
+
+@test
+fn test_case_39() [io]
+    let text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<sitemapindex>\n  <sitemap>\n    <loc>http://www.example.com/y%C3%BC7é6&lt;%C3%BCy-3.xml</loc>\n    <lastmod>2004-12-23T18:00+00:00</lastmod>\n  </sitemap>\n  <sitemap>\n    <loc>https://example.org/?q=151a3.xml</loc>\n    <lastmod>2026-09-27T09:41:00.5Z</lastmod>\n  </sitemap>\n  <sitemap>\n    <loc>http://www.example.com/60#top9&lt;/..xml</loc>\n  </sitemap>\n</sitemapindex>\n"
+    test.assert_eq(text_of(sitemapwrite.write_index([], sitemapdoc.index([sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("http://www.example.com/y%C3%BC7é6<%C3%BCy-3.xml"),
+        "2004-12-23T18:00+00:00"),
+    sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("https://example.org/?q=151a3.xml"), "2026-09-27T09:41:00.5Z"), sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref("http://www.example.com/60#top9</..xml"), "")]),
+    sitemapwrite.without_namespace(sitemapwrite.options()))),
+    text)
+    match sitemapread.read(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) =>
+            test.assert_eq(list.len(doc.index.refs), 3)
+            test.assert_eq(sitemapdoc.kind_name(doc.kind), "sitemapindex")
+    match sitemapread.read_lenient(text)
+        Err(f)  => test.fail(f.message())
+        Ok(doc) => test.assert_eq(list.len(doc.skipped), 0)

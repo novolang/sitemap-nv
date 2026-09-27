@@ -1,9 +1,7 @@
 // sitemapwrite_tests.nv — what the writer leaves out, and what it
 // refuses.
 //
-// RED ON PURPOSE: every assertion reaches `not implemented:
-// sitemap-nv.sitemapwrite.<fn>` or a function it calls.  What is
-// asserted is that an unset element is not written as a default, that
+// The suite asserts that an unset element is not written as a default, that
 // an ampersand in a URL is escaped, and that the byte count a caller
 // splits by is available without writing the document.
 

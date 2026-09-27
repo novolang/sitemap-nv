@@ -1,8 +1,7 @@
 // sitemaperror_tests.nv — which side of the pipe a fault is on, and
 // whether a reader can carry on past it.
 //
-// RED ON PURPOSE: every assertion reaches `not implemented:
-// sitemap-nv.sitemaperror.<fn>`.  What is asserted is that a fault
+// The suite asserts that a fault
 // about one entry is told apart from one about the whole document,
 // because a crawler with 49,999 good entries wants them.
 
