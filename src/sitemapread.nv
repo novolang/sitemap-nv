@@ -1,35 +1,24 @@
 // sitemapread.nv — a sitemap somebody else wrote.
 //
-// TWO READERS, BECAUSE THERE ARE TWO CALLERS
+// There are two readers for two callers.  `read` refuses every fault,
+// which is what a site generator reading back its own output wants.
+// `read_lenient` drops an entry with a fault and records it, which is
+// what a crawler reading somebody else's sitemap wants.  A fault about
+// the whole document, text that is not XML or a root that is not a
+// sitemap, is refused by both.
 //
-// A site generator reading back its own sitemap wants every fault
-// reported: a bad `priority` is its own bug and it should stop.  A
-// crawler reading somebody else's wants the 49,999 entries that are
-// fine and a note about the one that is not.
-//
-// `read` is the first and `read_lenient` is the second.  Neither is a
-// mode on the other, because a mode flag is a decision made by whoever
-// wrote the call and read by nobody.
-//
-// WHAT IS TOLERATED
-//
-// The namespace is accepted whether it is the 0.9 one, an old one, or
-// absent: sitemaps in the field carry all three and a reader that
-// insisted would refuse files every search engine accepts.  Elements
-// from the news, image and video extensions are ignored rather than
-// refused, as are comments, a byte-order mark and unknown attributes.
-//
-// WHAT IS NOT
-//
-// A root element that is neither `urlset` nor `sitemapindex`, and an
-// entry with no `loc`.  Both mean the file is not what it claims to
-// be, and carrying on would produce a document with entries that name
-// nothing.
+// The reader tolerates what sitemaps in the field carry: the 0.9
+// namespace, an older one or none, elements and attributes from the
+// news, image and video extensions (a prefix a file forgot to declare
+// included), comments, a byte-order mark, and white space around a
+// value.  Elements are matched by their local name.
 
-use sitemaperror
+use std.str
+use std.list
 use sitemapdoc
 use sitemapurl
 use xmltree
+use xmlerror
 
 // A document read into either of the two forms.
 //
@@ -46,20 +35,19 @@ use xmltree
 // ```
 pub struct SitemapDocument
     // Which of the two this is.
-    kind: sitemapdoc.SitemapKind
+    kind: SitemapKind
     // The URLs, empty when this is an index.
-    urls: sitemapurl.SitemapSet
+    urls: SitemapSet
     // The sitemap files, empty when this is a URL set.
-    index: sitemapdoc.SitemapIndex
+    index: SitemapIndex
     // Entries the reader dropped, with the fault each was dropped for.
     // Always empty from `read`, which refuses instead; this is how
     // `read_lenient` reports what it skipped.
-    skipped: [sitemaperror.SitemapFault]
+    skipped: [SitemapFault]
 
 // A document, with every fault refused.
 //
-// What a site generator reading back its own output wants: a bad
-// `priority` is its own bug.
+// The first entry with a fault refuses the document.
 //
 // ```novo
 // use sitemapread
@@ -69,14 +57,13 @@ pub struct SitemapDocument
 //         Ok(doc)    => println("${list.len(doc.index.refs)}")
 //         Err(fault) => println(fault.message())
 // ```
-pub fn read(source: Str) -> Result<SitemapDocument, sitemaperror.SitemapFault> []
-    todo("sitemap-nv.sitemapread.read")
+pub fn read(source: Str) -> Result<SitemapDocument, SitemapFault> []
+    read_tree(tree_of(source)!, true)
 
 // A document, with a broken entry dropped and recorded.
 //
-// What a crawler reading somebody else's sitemap wants.  A fault about
-// the document as a whole — not XML, wrong root — is still refused,
-// because there is nothing to carry on with.
+// A fault about the document as a whole, text that is not XML or a
+// root that is not a sitemap, is still refused.
 //
 // ```novo
 // use sitemapread
@@ -86,13 +73,12 @@ pub fn read(source: Str) -> Result<SitemapDocument, sitemaperror.SitemapFault> [
 //         Ok(doc)    => println("${list.len(doc.skipped)} entry dropped")
 //         Err(fault) => println(fault.message())
 // ```
-pub fn read_lenient(source: Str) -> Result<SitemapDocument, sitemaperror.SitemapFault> []
-    todo("sitemap-nv.sitemapread.read_lenient")
+pub fn read_lenient(source: Str) -> Result<SitemapDocument, SitemapFault> []
+    read_tree(tree_of(source)!, false)
 
 // A document from an already-parsed tree.
 //
-// The parse is the expensive half, and a caller that parsed the
-// document for another reason should not pay for it twice.
+// Read as `read` reads, with every fault refused.
 //
 // ```novo
 // use sitemapread
@@ -104,13 +90,12 @@ pub fn read_lenient(source: Str) -> Result<SitemapDocument, sitemaperror.Sitemap
 //         Ok(read)   => println("${list.len(read.urls.urls)}")
 //         Err(fault) => println(fault.message())
 // ```
-pub fn read_document(doc: xmltree.XmlDocument) -> Result<SitemapDocument, sitemaperror.SitemapFault> []
-    todo("sitemap-nv.sitemapread.read_document")
+pub fn read_document(doc: xmltree.XmlDocument) -> Result<SitemapDocument, SitemapFault> []
+    read_tree(doc, true)
 
 // Which of the two documents a tree is, or `None` when it is neither.
 //
-// The cheap question a crawler asks before it reads anything: an index
-// sends it to fetch more files and a URL set does not.
+// Decided by the root element's local name.
 //
 // ```novo
 // use sitemapdoc
@@ -122,13 +107,23 @@ pub fn read_document(doc: xmltree.XmlDocument) -> Result<SitemapDocument, sitema
 //         Some(kind) => println(sitemapdoc.kind_name(kind))
 //         None       => println("not a sitemap")
 // ```
-pub fn kind_of(doc: xmltree.XmlDocument) -> ?sitemapdoc.SitemapKind []
-    todo("sitemap-nv.sitemapread.kind_of")
+pub fn kind_of(doc: xmltree.XmlDocument) -> ?SitemapKind []
+    let root = xmltree.document_element(doc) ?? -1
+    if root < 0
+        return None
+    let name = xmltree.local_of(doc, root)
+    if name == "urlset"
+        return Some(SitemapUrlsetKind)
+    if name == "sitemapindex"
+        return Some(SitemapIndexKind)
+    None
 
 // One `url` element, by its node index in a tree.
 //
-// For a caller walking a large document itself rather than building
-// fifty thousand values it will use two fields of.
+// The document node's index reads the root element.  Children other
+// than `loc`, `lastmod`, `changefreq` and `priority` are passed over.
+// A `url` with no `loc` is `SitemapMissingLoc` with its position among
+// the document's entries, or 0 when it is not under a root.
 //
 // ```novo
 // use sitemapread
@@ -140,11 +135,33 @@ pub fn kind_of(doc: xmltree.XmlDocument) -> ?sitemapdoc.SitemapKind []
 //         Ok(u)      => println(u.loc)
 //         Err(fault) => println(fault.message())
 // ```
-pub fn read_url(doc: xmltree.XmlDocument,
-                index: Int) -> Result<sitemapurl.SitemapUrl, sitemaperror.SitemapFault> []
-    todo("sitemap-nv.sitemapread.read_url")
+pub fn read_url(doc: xmltree.XmlDocument, index: Int) -> Result<SitemapUrl, SitemapFault> []
+    let i = element_at(doc, index)
+    let Some(loc) = child_text(doc, i, "loc") else return Err(SitemapMissingLoc(ordinal(doc, i)))
+    let why = sitemapurl.loc_problem(loc)
+    if why != ""
+        return Err(SitemapBadLoc(loc, why))
+    var u = sitemapurl.url(loc)
+    if let Some(t) = child_text(doc, i, "lastmod")
+        if not sitemapurl.is_datetime_shaped(t)
+            return Err(SitemapBadLastmod(t))
+        u = sitemapurl.with_lastmod(u, t)
+    if let Some(t) = child_text(doc, i, "changefreq")
+        match sitemapurl.changefreq_named(t)
+            Some(f) =>
+                u = sitemapurl.with_changefreq(u, f)
+            None    =>
+                return Err(SitemapBadChangefreq(t))
+    if let Some(t) = child_text(doc, i, "priority")
+        match sitemapurl.priority_of(t)
+            Some(p) =>
+                u = sitemapurl.with_priority(u, p)
+            None    =>
+                return Err(SitemapBadPriority(t))
+    Ok(u)
 
-// One `sitemap` element of an index, by its node index.
+// One `sitemap` element of an index, by its node index, read as
+// `read_url` reads a `url`.
 //
 // ```novo
 // use sitemapread
@@ -156,15 +173,22 @@ pub fn read_url(doc: xmltree.XmlDocument,
 //         Ok(r)      => println(r.loc)
 //         Err(fault) => println(fault.message())
 // ```
-pub fn read_ref(doc: xmltree.XmlDocument,
-                index: Int) -> Result<sitemapdoc.SitemapRef, sitemaperror.SitemapFault> []
-    todo("sitemap-nv.sitemapread.read_ref")
+pub fn read_ref(doc: xmltree.XmlDocument, index: Int) -> Result<SitemapRef, SitemapFault> []
+    let i = element_at(doc, index)
+    let Some(loc) = child_text(doc, i, "loc") else return Err(SitemapMissingLoc(ordinal(doc, i)))
+    let why = sitemapurl.loc_problem(loc)
+    if why != ""
+        return Err(SitemapBadLoc(loc, why))
+    let lastmod = child_text(doc, i, "lastmod") ?? ""
+    if lastmod != "" and not sitemapurl.is_datetime_shaped(lastmod)
+        return Err(SitemapBadLastmod(lastmod))
+    Ok(sitemapdoc.ref_with_lastmod(sitemapdoc.sitemap_ref(loc), lastmod))
 
 // Every `url` or `sitemap` node index in a document, in document
 // order.
 //
-// The walk `read` does, offered on its own for a caller that wants the
-// nodes rather than the values.
+// The `url` children of a `urlset` root or the `sitemap` children of a
+// `sitemapindex` root, by local name; empty for any other document.
 //
 // ```novo
 // use sitemapread
@@ -175,4 +199,83 @@ pub fn read_ref(doc: xmltree.XmlDocument,
 //     println("${list.len(sitemapread.entry_nodes(doc))}")
 // ```
 pub fn entry_nodes(doc: xmltree.XmlDocument) -> [Int] []
-    todo("sitemap-nv.sitemapread.entry_nodes")
+    match kind_of(doc)
+        Some(SitemapUrlsetKind) => named_children(doc, "url")
+        Some(SitemapIndexKind)  => named_children(doc, "sitemap")
+        None                    => []
+
+// The tree of a source text, or `SitemapNotXml` for the first fault
+// xml-nv met other than a prefix nobody declared.
+fn tree_of(source: Str) -> Result<xmltree.XmlDocument, SitemapFault>
+    let doc = xmltree.build(source)
+    for issue in xmltree.issues_of(doc)
+        if issue.kind != XmlUndeclaredPrefix
+            return Err(SitemapNotXml(issue.at, xmlerror.kind_name(issue.kind)))
+    Ok(doc)
+
+// A tree read into a document, refusing every entry fault when
+// `strict` is set and dropping the entry otherwise.
+fn read_tree(doc: xmltree.XmlDocument, strict: Bool) -> Result<SitemapDocument, SitemapFault>
+    let kind = kind_of(doc) ?? SitemapUrlsetKind
+    if kind_of(doc) == None
+        let root = xmltree.document_element(doc) ?? -1
+        if root < 0
+            return Err(SitemapWrongRoot(""))
+        return Err(SitemapWrongRoot(xmltree.tag_of(doc, root)))
+    var urls: [SitemapUrl] = []
+    var refs: [SitemapRef] = []
+    var skipped: [SitemapFault] = []
+    for i in entry_nodes(doc)
+        let fault = entry_into(doc, i, kind, urls, refs)
+        if let Some(f) = fault
+            if strict
+                return Err(f)
+            list.push(skipped, f)
+    Ok(SitemapDocument { kind: kind,
+        urls: sitemapurl.urlset(urls),
+        index: sitemapdoc.index(refs),
+        skipped: skipped })
+
+// Read entry `i` onto `urls` or `refs`, answering its fault instead
+// when it has one.
+fn entry_into(doc: xmltree.XmlDocument, i: Int, kind: SitemapKind, var urls: [SitemapUrl],
+              var refs: [SitemapRef]) -> ?SitemapFault
+    if kind == SitemapIndexKind
+        match read_ref(doc, i)
+            Ok(r)  => list.push(refs, r)
+            Err(f) =>
+                return Some(f)
+        return None
+    match read_url(doc, i)
+        Ok(u)  => list.push(urls, u)
+        Err(f) =>
+            return Some(f)
+    None
+
+// The element a caller's index names: the root element for the
+// document node, and the node itself otherwise.
+fn element_at(doc: xmltree.XmlDocument, index: Int) -> Int
+    if index == xmltree.root(doc)
+        return xmltree.document_element(doc) ?? index
+    index
+
+// The trimmed text of the first child element with a local name, or
+// `None` when there is none.
+fn child_text(doc: xmltree.XmlDocument, i: Int, name: Str) -> ?Str
+    for c in xmltree.element_children(doc, i)
+        if xmltree.local_of(doc, c) == name
+            return Some(str.trim(xmltree.inner_text(doc, c)))
+    None
+
+// The child elements of the root with a local name, in order.
+fn named_children(doc: xmltree.XmlDocument, name: Str) -> [Int]
+    let root = xmltree.document_element(doc) ?? 0
+    list.filter(xmltree.element_children(doc, root), c => xmltree.local_of(doc, c) == name)
+
+// An entry node's position among the document's entries, or 0.
+fn ordinal(doc: xmltree.XmlDocument, i: Int) -> Int
+    let nodes = entry_nodes(doc)
+    for k in 0..list.len(nodes)
+        if nodes[k] == i
+            return k
+    0
