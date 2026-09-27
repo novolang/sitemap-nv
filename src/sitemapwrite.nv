@@ -1,35 +1,28 @@
-// sitemapwrite.nv — the document, appended to a buffer the caller
-// owns.
+// sitemapwrite.nv — the document, appended to a buffer the caller owns.
 //
-// THE WRITER APPENDS, IT DOES NOT PRINT OR SAVE
+// Every writing function takes the buffer to write into and answers it
+// with the document appended.  Nothing opens a file, so a site
+// generator writes the bytes where it has decided they go and reuses
+// one buffer for several split files.
 //
-// Every function here takes the buffer to write into and answers the
-// buffer it wrote.  Nothing opens a file: a site generator writes the
-// bytes where it has decided they go, and a caller producing several
-// split files reuses one buffer.
-//
-// WHAT IT REFUSES
-//
-// A `loc` is a URL, and a URL with a query string has an ampersand in
-// it.  That ampersand must be written `&amp;`, and it is the single
-// most common defect in hand-written sitemaps: a file that looks right
-// and that no parser will read.  The escaping is xml-nv's, so it is
-// correct by construction here.
-//
-// A character XML 1.0 section 2.2 does not admit is refused rather
-// than emitted, with its offset.  It reaches a sitemap through a URL
-// that was built from a file name, and a file name can hold anything.
-//
-// WHAT IT LEAVES OUT
+// Text is escaped as the protocol's entity table requires: `&`, `'`,
+// `"`, `>` and `<` become `&amp;`, `&apos;`, `&quot;`, `&gt;` and
+// `&lt;`.  A URL with a query string has an ampersand in it, and an
+// unescaped one is a file no parser reads.  A character XML 1.0
+// section 2.2 does not admit is refused with its offset, as xml-nv's
+// `is_xml_char` decides it, and nothing is appended.
 //
 // An element whose value was never set is not written.  An absent
 // `changefreq` is `SitemapUnstated` and an absent `priority` is `-1`,
-// and neither is written as a default — a writer that emitted
-// `<priority>0.5</priority>` for every URL would be telling a search
-// engine that the site had ranked its pages when it had not.
+// and neither is written as a default.
+//
+// The layout is one element per line, each nested element indented by
+// `indent` spaces, with a line feed after every line.  With an indent
+// of `0` the document is one line with no line feed.
 
-use sitemaperror
-use sitemapdoc
+use std.str
+use std.list
+use xmlparse
 use sitemapurl
 
 // How a document is laid out.
@@ -40,19 +33,19 @@ use sitemapurl
 // fn main() [io]
 //     println("${sitemapwrite.options().indent}")
 // ```
-pub struct SitemapWriteOptions
-    // Spaces per level of nesting, or `0` for one line.  Whitespace
-    // between elements means nothing to a reader of this format, so
-    // this is for a human opening the file — and for the byte count,
-    // since indenting fifty thousand URLs is several megabytes.
+pub @value
+struct SitemapWriteOptions
+    // Spaces per level of nesting, or `0` for one line.  White space
+    // between elements means nothing to a reader, and indenting fifty
+    // thousand URLs costs several megabytes of the limit.
     indent: Int
     // Whether to write the `<?xml version="1.0" encoding="UTF-8"?>`
-    // declaration first.  On by default; the protocol requires UTF-8
-    // and the declaration is how a file says so.
+    // declaration first.  The protocol requires UTF-8, and the
+    // declaration says so.
     declaration: Bool
     // Whether to declare the sitemaps.org 0.9 namespace on the root
-    // element.  On by default, and off only for a caller embedding
-    // this document inside another that has already declared it.
+    // element.  Off only for a document embedded in another that
+    // declares it.
     namespace: Bool
 
 // The defaults: a two-space indent, a declaration, and the namespace.
@@ -64,13 +57,12 @@ pub struct SitemapWriteOptions
 //     println("${sitemapwrite.options().declaration}")
 // ```
 pub fn options() -> SitemapWriteOptions []
-    todo("sitemap-nv.sitemapwrite.options")
+    SitemapWriteOptions { indent: 2, declaration: true, namespace: true }
 
 // The smallest file that says the same thing: no indent, no
 // declaration.
 //
-// What a site with fifty thousand URLs wants, because the indentation
-// is megabytes and the limit is counted in them.
+// The namespace is still declared.
 //
 // ```novo
 // use sitemapwrite
@@ -79,7 +71,7 @@ pub fn options() -> SitemapWriteOptions []
 //     println("${sitemapwrite.compact().indent}")
 // ```
 pub fn compact() -> SitemapWriteOptions []
-    todo("sitemap-nv.sitemapwrite.compact")
+    SitemapWriteOptions { indent: 0, declaration: false, namespace: true }
 
 // The same options without the namespace declaration.
 //
@@ -90,18 +82,14 @@ pub fn compact() -> SitemapWriteOptions []
 //     println("${sitemapwrite.without_namespace(sitemapwrite.options()).namespace}")
 // ```
 pub fn without_namespace(o: SitemapWriteOptions) -> SitemapWriteOptions []
-    todo("sitemap-nv.sitemapwrite.without_namespace")
+    SitemapWriteOptions { indent: o.indent, declaration: o.declaration, namespace: false }
 
 // A `urlset` document, appended to `out`.
 //
 // The answer is a fault when any text in it holds a character XML
 // cannot carry or a `loc` is not an absolute URL, and nothing is
-// appended in that case — a caller retries rather than trimming a
-// half-written document.
-//
-// The limits are NOT checked here: `sitemapdoc.check` is that
-// question, and a caller that wants a file over the limit written —
-// for a test, for a tool that is about to split it — gets one.
+// appended then.  The limits are not checked here; `sitemapdoc.check`
+// measures them, and a document over them is written as asked.
 //
 // ```novo
 // use sitemapurl
@@ -112,31 +100,33 @@ pub fn without_namespace(o: SitemapWriteOptions) -> SitemapWriteOptions []
 //         Ok(bytes)  => println("${list.len(bytes)} byte(s)")
 //         Err(fault) => println(fault.message())
 // ```
-pub fn write_urlset(out: [u8], s: sitemapurl.SitemapSet,
-                    o: SitemapWriteOptions) -> Result<[u8], sitemaperror.SitemapFault> []
-    todo("sitemap-nv.sitemapwrite.write_urlset")
+pub fn write_urlset(var out: [u8], s: SitemapSet,
+                    o: SitemapWriteOptions) -> Result<[u8], SitemapFault> []
+    let text = to_str(s, o)!
+    Ok(appended(out, text))
 
-// A `sitemapindex` document, appended to `out`.
+// A `sitemapindex` document, appended to `out`, refused as
+// `write_urlset` refuses.
 //
 // ```novo
-// use sitemapdoc
-// use sitemapwrite
+// // use sitemapwrite
 //
 // fn main() [io]
 //     match sitemapwrite.write_index([], sitemapdoc.index([]), sitemapwrite.options())
 //         Ok(bytes)  => println("${list.len(bytes)} byte(s)")
 //         Err(fault) => println(fault.message())
 // ```
-pub fn write_index(out: [u8], i: sitemapdoc.SitemapIndex,
-                   o: SitemapWriteOptions) -> Result<[u8], sitemaperror.SitemapFault> []
-    todo("sitemap-nv.sitemapwrite.write_index")
+pub fn write_index(var out: [u8], i: SitemapIndex,
+                   o: SitemapWriteOptions) -> Result<[u8], SitemapFault> []
+    for r in i.refs
+        if let Some(f) = ref_fault(r)
+            return Err(f)
+    Ok(appended(out, index_text(i, o)))
 
 // One `url` element, appended to `out`.
 //
-// For a caller streaming a large sitemap into a file it is already
-// writing, rather than holding fifty thousand values in memory.  The
-// caller writes the root element itself, with `write_open` and
-// `write_close`.
+// For a caller streaming a large sitemap, which writes the root element
+// itself with `write_open` and `write_close`.
 //
 // ```novo
 // use sitemapurl
@@ -148,39 +138,38 @@ pub fn write_index(out: [u8], i: sitemapdoc.SitemapIndex,
 //         Ok(bytes)  => println("${list.len(bytes)} byte(s)")
 //         Err(fault) => println(fault.message())
 // ```
-pub fn write_url(out: [u8], u: sitemapurl.SitemapUrl,
-                 o: SitemapWriteOptions) -> Result<[u8], sitemaperror.SitemapFault> []
-    todo("sitemap-nv.sitemapwrite.write_url")
+pub fn write_url(var out: [u8], u: SitemapUrl,
+                 o: SitemapWriteOptions) -> Result<[u8], SitemapFault> []
+    if let Some(f) = url_fault(u)
+        return Err(f)
+    Ok(appended(out, url_text(u, o)))
 
-// The declaration and the root element's open tag.
+// The declaration, when the options ask for one, and the root
+// element's open tag.
 //
 // ```novo
-// use sitemapdoc
-// use sitemapwrite
+// // use sitemapwrite
 //
 // fn main() [io]
 //     println("${list.len(sitemapwrite.write_open([], SitemapUrlsetKind, sitemapwrite.options()))}")
 // ```
-pub fn write_open(out: [u8], kind: sitemapdoc.SitemapKind, o: SitemapWriteOptions) -> [u8] []
-    todo("sitemap-nv.sitemapwrite.write_open")
+pub fn write_open(var out: [u8], kind: SitemapKind, o: SitemapWriteOptions) -> [u8] []
+    appended(out, open_text(kind, o))
 
 // The root element's close tag.
 //
 // ```novo
-// use sitemapdoc
-// use sitemapwrite
+// // use sitemapwrite
 //
 // fn main() [io]
 //     println("${list.len(sitemapwrite.write_close([], SitemapUrlsetKind, sitemapwrite.options()))}")
 // ```
-pub fn write_close(out: [u8], kind: sitemapdoc.SitemapKind, o: SitemapWriteOptions) -> [u8] []
-    todo("sitemap-nv.sitemapwrite.write_close")
+pub fn write_close(var out: [u8], kind: SitemapKind, o: SitemapWriteOptions) -> [u8] []
+    appended(out, line(0, "</${root_name(kind)}>", o))
 
 // A `urlset` as a string.
 //
-// The convenience over `write_urlset` for a caller that is going to
-// hold the document anyway.  A sitemap at the limit is a string of
-// fifty megabytes, which is the reason the buffer form exists.
+// The same document `write_urlset` appends, refused the same way.
 //
 // ```novo
 // use sitemapurl
@@ -191,15 +180,20 @@ pub fn write_close(out: [u8], kind: sitemapdoc.SitemapKind, o: SitemapWriteOptio
 //         Ok(text)   => println("${str.len(text)} character(s)")
 //         Err(fault) => println(fault.message())
 // ```
-pub fn to_str(s: sitemapurl.SitemapSet,
-              o: SitemapWriteOptions) -> Result<Str, sitemaperror.SitemapFault> []
-    todo("sitemap-nv.sitemapwrite.to_str")
+pub fn to_str(s: SitemapSet, o: SitemapWriteOptions) -> Result<Str, SitemapFault> []
+    for u in s.urls
+        if let Some(f) = url_fault(u)
+            return Err(f)
+    var parts: [Str] = [open_text(SitemapUrlsetKind, o)]
+    for u in s.urls
+        list.push(parts, url_text(u, o))
+    list.push(parts, line(0, "</urlset>", o))
+    Ok(str.join(parts, ""))
 
 // How many bytes a URL set would take, written with these options.
 //
-// What `sitemapdoc.check` estimates from, computed without building
-// the document.  A caller splitting a large set calls it per candidate
-// file instead of writing each one to find out how big it is.
+// Measured one URL at a time, without building the whole document, and
+// equal to the length of what `to_str` writes for a set it accepts.
 //
 // ```novo
 // use sitemapurl
@@ -208,13 +202,16 @@ pub fn to_str(s: sitemapurl.SitemapSet,
 // fn main() [io]
 //     println("${sitemapwrite.byte_length(sitemapurl.urlset([]), sitemapwrite.options())}")
 // ```
-pub fn byte_length(s: sitemapurl.SitemapSet, o: SitemapWriteOptions) -> Int []
-    todo("sitemap-nv.sitemapwrite.byte_length")
+pub fn byte_length(s: SitemapSet, o: SitemapWriteOptions) -> Int []
+    var n = str.len(open_text(SitemapUrlsetKind, o)) + str.len(line(0, "</urlset>", o))
+    for u in s.urls
+        n = n + url_byte_length(u, o)
+    n
 
 // How many bytes one `url` element would take.
 //
-// The per-entry half of `byte_length`, for a caller filling a file up
-// to the limit one URL at a time.
+// The per-entry part of `byte_length`, for a caller filling a file one
+// URL at a time.
 //
 // ```novo
 // use sitemapurl
@@ -224,5 +221,120 @@ pub fn byte_length(s: sitemapurl.SitemapSet, o: SitemapWriteOptions) -> Int []
 //     let u = sitemapurl.url("https://example.org/a")
 //     println("${sitemapwrite.url_byte_length(u, sitemapwrite.options())}")
 // ```
-pub fn url_byte_length(u: sitemapurl.SitemapUrl, o: SitemapWriteOptions) -> Int []
-    todo("sitemap-nv.sitemapwrite.url_byte_length")
+pub fn url_byte_length(u: SitemapUrl, o: SitemapWriteOptions) -> Int []
+    str.len(url_text(u, o))
+
+// How many bytes an index takes written with these options.
+//
+// What `sitemapdoc.check_index` measures an index by.
+//
+// ```novo
+// // use sitemapwrite
+//
+// fn main() [io]
+//     println("${sitemapwrite.index_byte_length(sitemapdoc.index([]), sitemapwrite.compact())}")
+// ```
+pub fn index_byte_length(i: SitemapIndex, o: SitemapWriteOptions) -> Int []
+    str.len(index_text(i, o))
+
+// A whole index as text.
+fn index_text(i: SitemapIndex, o: SitemapWriteOptions) -> Str
+    var parts: [Str] = [open_text(SitemapIndexKind, o)]
+    for r in i.refs
+        list.push(parts, line(1, "<sitemap>", o))
+        list.push(parts, line(2, "<loc>${escaped(r.loc)}</loc>", o))
+        if r.lastmod != ""
+            list.push(parts, line(2, "<lastmod>${escaped(r.lastmod)}</lastmod>", o))
+        list.push(parts, line(1, "</sitemap>", o))
+    list.push(parts, line(0, "</sitemapindex>", o))
+    str.join(parts, "")
+
+// One `url` element as text.
+fn url_text(u: SitemapUrl, o: SitemapWriteOptions) -> Str
+    var parts: [Str] = [line(1, "<url>", o), line(2, "<loc>${escaped(u.loc)}</loc>", o)]
+    if u.lastmod != ""
+        list.push(parts, line(2, "<lastmod>${escaped(u.lastmod)}</lastmod>", o))
+    let freq = sitemapurl.changefreq_text(u.changefreq)
+    if freq != ""
+        list.push(parts, line(2, "<changefreq>${freq}</changefreq>", o))
+    let priority = sitemapurl.priority_text(u.priority_milli)
+    if priority != ""
+        list.push(parts, line(2, "<priority>${priority}</priority>", o))
+    list.push(parts, line(1, "</url>", o))
+    str.join(parts, "")
+
+// The declaration and the root's open tag.
+fn open_text(kind: SitemapKind, o: SitemapWriteOptions) -> Str
+    var head = ""
+    if o.declaration
+        head = line(0, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>", o)
+    var ns = ""
+    if o.namespace
+        ns = " xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\""
+    head + line(0, "<${root_name(kind)}${ns}>", o)
+
+// One line at a nesting level: indented and ended with a line feed, or
+// as it is when the indent is `0`.
+fn line(level: Int, text: Str, o: SitemapWriteOptions) -> Str
+    if o.indent == 0
+        return text
+    str.repeat(" ", level * o.indent) + text + "\n"
+
+// Text with the protocol's five entities escaped.
+fn escaped(t: Str) -> Str
+    let amp = str.replace_all(t, "&", "&amp;")
+    let quotes = str.replace_all(str.replace_all(amp, "'", "&apos;"), "\"", "&quot;")
+    str.replace_all(str.replace_all(quotes, ">", "&gt;"), "<", "&lt;")
+
+// The fault a URL would be written with, or `None`.
+fn url_fault(u: SitemapUrl) -> ?SitemapFault
+    let why = sitemapurl.loc_problem(u.loc)
+    if why != ""
+        return Some(SitemapBadLoc(u.loc, why))
+    char_fault("loc", u.loc) ?? char_fault("lastmod", u.lastmod)
+
+// The fault an index entry would be written with, or `None`.
+fn ref_fault(r: SitemapRef) -> ?SitemapFault
+    let why = sitemapurl.loc_problem(r.loc)
+    if why != ""
+        return Some(SitemapBadLoc(r.loc, why))
+    char_fault("loc", r.loc) ?? char_fault("lastmod", r.lastmod)
+
+// `SitemapUnwritable` for the first character of `t` that XML 1.0
+// cannot carry, or `None`.
+fn char_fault(element: Str, t: Str) -> ?SitemapFault
+    for i in 0..str.len(t)
+        let cp = code_point_at(t, i)
+        if cp >= 0 and not xmlparse.is_xml_char(cp)
+            return Some(SitemapUnwritable(element, i, cp))
+    None
+
+// The code point whose UTF-8 encoding starts at byte `i`, or -1 for a
+// continuation byte.
+fn code_point_at(t: Str, i: Int) -> Int
+    let b = str.byte_at_or(t, i, 0)
+    if b < 128
+        return b
+    if b < 192
+        return -1
+    if b < 224
+        return ((b & 31) << 6) | cont(t, i + 1)
+    if b < 240
+        return ((b & 15) << 12) | (cont(t, i + 1) << 6) | cont(t, i + 2)
+    ((b & 7) << 18) | (cont(t, i + 1) << 12) | (cont(t, i + 2) << 6) | cont(t, i + 3)
+
+// The six payload bits of a UTF-8 continuation byte.
+fn cont(t: Str, i: Int) -> Int
+    str.byte_at_or(t, i, 0) & 63
+
+// `out` with the bytes of `text` after what it held.
+fn appended(var out: [u8], text: Str) -> [u8]
+    for i in 0..str.len(text)
+        list.push(out, str.byte_at_or(text, i, 0) as u8)
+    out
+
+// The root element's name for a kind of document.
+fn root_name(kind: SitemapKind) -> Str
+    match kind
+        SitemapUrlsetKind => "urlset"
+        SitemapIndexKind  => "sitemapindex"
