@@ -6,12 +6,6 @@ the [sitemaps.org protocol, version 0.9](https://www.sitemaps.org/protocol.html)
 which Google, Bing and Yandex jointly publish and all of them read.
 This package reads such a file into typed values and writes one back.
 
-**Status: NOT IMPLEMENTED — interface only.** Every function is
-declared with its full signature, but every body is a `todo()` that
-panics when called. The package is published so its design can be
-reviewed and depended on before it is implemented. Version 0.1.0 will
-be the first working release.
-
 ## What a sitemap is
 
 A sitemap is a `urlset` element holding one `url` element per page.
@@ -77,10 +71,7 @@ fn main() [io]
         Err(fault)   => println("cannot write the sitemap: ${fault.message()}")
 ```
 
-Build and test with `novo pkg build` and `novo test`. Today `novo test`
-fails on purpose: every test reaches a
-`not implemented: sitemap-nv.<module>.<fn>` panic. The tests are the
-specification the implementation will have to satisfy.
+Build and test with `novo pkg build` and `novo test tests/`.
 
 ## What the package contains
 
@@ -132,11 +123,11 @@ then names the files that came out.
    `sitemapdoc.check` answers how far over a document is and how many
    files it would take. A `Result` would make a large site look like a
    failure.
-6. **The byte count is an estimate, and it depends on the write
-   options.** A document's size changes with indentation and with how
-   much escaping each URL needs, so `sitemapdoc.check` and
-   `sitemapwrite.byte_length` answer what the document would take
-   written those ways.
+6. **The byte count depends on the write options.** A document's size
+   changes with indentation and with how much escaping each URL needs.
+   `sitemapdoc.check` and `sitemapdoc.split` measure the document as
+   `sitemapwrite.options()` writes it, and `sitemapwrite.byte_length`
+   measures it under any options.
 7. **`sitemapdoc.split` always answers a list.** A conforming set
    answers a list of one, so a caller writes the same loop either way,
    and the order of the URLs is kept across the files.
@@ -147,10 +138,10 @@ then names the files that came out.
    address.** `sitemapdoc.check_prefix` takes where the sitemap will be
    published and answers the URLs that break it, because a search
    engine drops those without saying so.
-10. **An ampersand in a `loc` is escaped.** A URL with a query string
-    has one, and an unescaped ampersand is the most common defect in a
-    hand-written sitemap: a file that looks right and that no parser
-    will read.
+10. **The protocol's five entities are escaped.** `&`, `'`, `"`, `>`
+    and `<` are written `&amp;`, `&apos;`, `&quot;`, `&gt;` and `&lt;`.
+    A URL with a query string has an ampersand, and an unescaped one is
+    a file that looks right and that no parser will read.
 11. **A character XML 1.0 section 2.2 does not admit is refused**, with
     its offset, rather than written into a file a search engine will
     reject without explanation.
@@ -158,8 +149,10 @@ then names the files that came out.
     out.** A file with the 0.9 namespace, with an older one, or with
     none at all reads; a file this package writes declares the 0.9 one.
 13. **Elements from the news, image and video extensions are ignored,
-    not refused.** So are comments and unknown attributes. A reader
-    that insisted would refuse files every search engine accepts.
+    not refused.** So are comments, unknown attributes and a prefix the
+    file never declared, and elements are matched by their local name.
+    A reader that insisted would refuse files every search engine
+    accepts.
 14. **Nothing is fetched.** A sitemap index names other files and this
     package never follows one. A sitemap is written by whoever owns the
     site, and its `loc` elements are not addresses a library should
@@ -197,48 +190,30 @@ then names the files that came out.
 ## Tests
 
 ```bash
-novo test tests/sitemapurl_tests.nv     # the three optional children, typed
-novo test tests/sitemapdoc_tests.nv     # the limits, the split and the index
-novo test tests/sitemapread_tests.nv    # strict and lenient reading
-novo test tests/sitemapwrite_tests.nv   # what is left out, and what is refused
-novo test tests/sitemaperror_tests.nv   # which faults a reader survives
+novo test tests/protocol_tests.nv       #  4 tests: the protocol's own samples
+novo test tests/differential_tests.nv   # 40 tests: seeded documents ElementTree read back
+novo test tests/sitemapurl_tests.nv     #  6 tests: the three optional children, typed
+novo test tests/sitemapdoc_tests.nv     #  6 tests: the limits, the split and the index
+novo test tests/sitemapread_tests.nv    #  5 tests: strict and lenient reading
+novo test tests/sitemapwrite_tests.nv   #  7 tests: what is left out, and what is refused
+novo test tests/sitemaperror_tests.nv   #  4 tests: which faults a reader survives
+novo test tests/corners_tests.nv        #  7 tests: every refusal and every shape
+bash tests/coverage.sh                  # line coverage over src/
 ```
 
 The normative source is the sitemaps.org protocol version 0.9, and XML
-1.0 section 2.2 for the characters a document may carry. The reference
-implementations are the Rust crate `sitemap-rs` and the Python package
-`python-sitemap`.
+1.0 section 2.2 for the characters a document may carry.
+`tests/protocol_tests.nv` holds the protocol page's three samples and
+its escaping example: each sample is read to its values and written
+back, with a three-space indent, as the page prints it.
 
-The suite asserts that an absent element is not written as a default,
-that a priority survives being written and read again, that an eighth
-`changefreq` is a fault rather than a silent drop, that a set over a
-limit is a report and not an error, that splitting keeps the order,
-that an ampersand in a URL is escaped, and that the strict reader
-refuses what the lenient one drops.
-
-The tests compile today and fail at run, each on the
-`not implemented: sitemap-nv.<module>.<fn>` panic that is its body.
-That is the expected state of an interface release. They turn green one
-at a time as bodies land.
-
-## Implementation status
-
-| Item | Implemented |
-| --- | --- |
-| `sitemapurl.SitemapUrl`, `.SitemapSet`, `.SitemapChangefreq` | the types are declared |
-| `sitemapdoc.SitemapRef`, `.SitemapIndex`, `.SitemapKind`, `.SitemapLimits`, `.SitemapReport` | the types are declared |
-| `sitemapurl.url`, `.with_lastmod`, `.with_changefreq`, `.with_priority`, `.urlset` | no |
-| `sitemapurl.changefreq_text`, `.changefreq_named` | no |
-| `sitemapurl.priority_text`, `.priority_of`, `.is_datetime_shaped`, `.loc_problem` | no |
-| `sitemapdoc.limits`, `.limits_of`, `.check`, `.check_index`, `.conforms`, `.split` | no |
-| `sitemapdoc.index`, `.index_for`, `.sitemap_ref`, `.ref_with_lastmod`, `.kind_name` | no |
-| `sitemapdoc.check_prefix`, `.namespace` | no |
-| `sitemapread.read`, `.read_lenient`, `.read_document`, `.kind_of` | no |
-| `sitemapread.read_url`, `.read_ref`, `.entry_nodes` | no |
-| `sitemapwrite.options`, `.compact`, `.without_namespace` | no |
-| `sitemapwrite.write_urlset`, `.write_index`, `.write_url`, `.write_open`, `.write_close`, `.to_str` | no |
-| `sitemapwrite.byte_length`, `.url_byte_length` | no |
-| `sitemaperror.is_writer_fault`, `.is_entry_fault`, `.code`, `SitemapFault.message` | no |
+The second oracle is Python's `xml.etree.ElementTree`.
+`tools/differential.py` draws seeded URL sets and indexes, with every
+character the entity table names in their URLs, every `lastmod` shape,
+and four layouts, has this package write each, and stops unless
+ElementTree reads every value back. It writes the verified documents
+into `tests/differential_tests.nv`, where the writer must produce them
+again and both readers must read them back.
 
 ## Licence
 
