@@ -1,31 +1,24 @@
 // sitemapurl.nv — one `url` element, with its three optional children
 // typed.
 //
-// PRIORITY IS THOUSANDTHS, NOT A FRACTION
+// `priority` is carried as an integer count of thousandths: `500` is
+// the default `0.5`.  The protocol writes it as a decimal between 0.0
+// and 1.0, and a float read and written again can change its digits;
+// thousandths are written with as few digits as represent them, so a
+// priority survives a round trip.  No writer in the field uses a finer
+// step.
 //
-// The protocol writes `priority` as a decimal between 0.0 and 1.0,
-// which is a float in the file, and a float does not round-trip: a
-// sitemap read and written again would change its own numbers.  So the
-// value is carried as an integer count of thousandths — `500` is the
-// default `0.5` — and rendered with as few digits as represent it
-// exactly.  Thousandths is finer than any search engine distinguishes
-// and finer than any writer in the field emits.
+// `lastmod` is a W3C Datetime, carried as the text it will be written
+// as.  This package declares no effects and holds no calendar, so
+// `is_datetime_shaped` checks the shape a reader parses and not whether
+// the day exists.
 //
-// LASTMOD IS THE TEXT IT WILL CARRY
-//
-// `lastmod` is a W3C Datetime, which is a date with optional time and
-// an optional zone offset.  This package declares no effects, so it
-// can neither read a clock nor hold a calendar, and it does not know
-// whether the date exists.  `is_datetime_shaped` is the only judgement
-// made about it: whether a reader will parse it.
-//
-// CHANGEFREQ IS AN ENUM BECAUSE IT IS A CLOSED LIST
-//
-// The protocol names seven values and no others, and a search engine
-// meeting an eighth ignores the element.  An enum is therefore the
-// honest type, and a reader meeting an eighth answers
-// `SitemapBadChangefreq` naming what was written rather than silently
-// dropping it, so a site generator finds its own typo.
+// `changefreq` is an enum because the protocol names seven values and
+// no others.  A reader meeting an eighth answers `SitemapBadChangefreq`
+// naming what was written, so a site generator finds its own typo.
+
+use std.str
+use std.list
 
 // How often the page at a URL is likely to change.
 //
@@ -74,8 +67,8 @@ pub struct SitemapUrl
     // The `loc` element: an absolute URL, at most 2,048 characters.
     // The one child the protocol requires.
     loc: Str
-    // The `lastmod` element, verbatim, or `""`.  A W3C Datetime; see
-    // the note at the top of this module on why it is text.
+    // The `lastmod` element, verbatim, or `""`.  A W3C Datetime, held
+    // as the text it is written as.
     lastmod: Str
     // The `changefreq` element, or `SitemapUnstated`.
     changefreq: SitemapChangefreq
@@ -110,7 +103,7 @@ pub struct SitemapSet
 //     println("${sitemapurl.url("https://example.org/a").priority_milli}")
 // ```
 pub fn url(loc: Str) -> SitemapUrl []
-    todo("sitemap-nv.sitemapurl.url")
+    SitemapUrl { loc: loc, lastmod: "", changefreq: SitemapUnstated, priority_milli: -1 }
 
 // The same URL with a `lastmod`.
 //
@@ -125,7 +118,10 @@ pub fn url(loc: Str) -> SitemapUrl []
 //     println(u.lastmod)
 // ```
 pub fn with_lastmod(u: SitemapUrl, w3c_datetime: Str) -> SitemapUrl []
-    todo("sitemap-nv.sitemapurl.with_lastmod")
+    SitemapUrl { loc: u.loc,
+        lastmod: w3c_datetime,
+        changefreq: u.changefreq,
+        priority_milli: u.priority_milli }
 
 // The same URL with a `changefreq`.
 //
@@ -137,14 +133,15 @@ pub fn with_lastmod(u: SitemapUrl, w3c_datetime: Str) -> SitemapUrl []
 //     println(sitemapurl.changefreq_text(u.changefreq))
 // ```
 pub fn with_changefreq(u: SitemapUrl, freq: SitemapChangefreq) -> SitemapUrl []
-    todo("sitemap-nv.sitemapurl.with_changefreq")
+    SitemapUrl { loc: u.loc,
+        lastmod: u.lastmod,
+        changefreq: freq,
+        priority_milli: u.priority_milli }
 
 // The same URL with a `priority`, in thousandths.
 //
 // A value outside `0` to `1000` is clamped into it rather than
-// refused: the protocol's range is a range, a caller that computed
-// `1200` meant "as high as possible", and refusing would turn an
-// arithmetic slip into a failed build.
+// refused, so a computed `1200` is written as `1.0`.
 //
 // ```novo
 // use sitemapurl
@@ -154,7 +151,12 @@ pub fn with_changefreq(u: SitemapUrl, freq: SitemapChangefreq) -> SitemapUrl []
 //     println("${u.priority_milli}")
 // ```
 pub fn with_priority(u: SitemapUrl, milli: Int) -> SitemapUrl []
-    todo("sitemap-nv.sitemapurl.with_priority")
+    var p = milli
+    if p < 0
+        p = 0
+    if p > 1000
+        p = 1000
+    SitemapUrl { loc: u.loc, lastmod: u.lastmod, changefreq: u.changefreq, priority_milli: p }
 
 // A `urlset` from a list of URLs.
 //
@@ -166,7 +168,7 @@ pub fn with_priority(u: SitemapUrl, milli: Int) -> SitemapUrl []
 //     println("${list.len(s.urls)}")
 // ```
 pub fn urlset(urls: [SitemapUrl]) -> SitemapSet []
-    todo("sitemap-nv.sitemapurl.urlset")
+    SitemapSet { urls: urls[:] }
 
 // The changefreq's text as the protocol writes it: `"weekly"`, and so
 // on.  `SitemapUnstated` is `""`.
@@ -178,13 +180,21 @@ pub fn urlset(urls: [SitemapUrl]) -> SitemapSet []
 //     println(sitemapurl.changefreq_text(SitemapUnstated))
 // ```
 pub fn changefreq_text(freq: SitemapChangefreq) -> Str []
-    todo("sitemap-nv.sitemapurl.changefreq_text")
+    match freq
+        SitemapUnstated => ""
+        SitemapAlways   => "always"
+        SitemapHourly   => "hourly"
+        SitemapDaily    => "daily"
+        SitemapWeekly   => "weekly"
+        SitemapMonthly  => "monthly"
+        SitemapYearly   => "yearly"
+        SitemapNever    => "never"
 
 // The changefreq a text names, or `None`.
 //
-// `None` for an eighth value, which is what makes
-// `SitemapBadChangefreq` possible: a reader that mapped an unknown
-// word onto `SitemapUnstated` would hide a site's own typo.
+// `None` for any other text, the empty text included.  The protocol's
+// values are lower case, and a value in another case is not one of
+// them.
 //
 // ```novo
 // use sitemapurl
@@ -195,14 +205,14 @@ pub fn changefreq_text(freq: SitemapChangefreq) -> Str []
 //         None       => println("not one of the seven")
 // ```
 pub fn changefreq_named(text: Str) -> ?SitemapChangefreq []
-    todo("sitemap-nv.sitemapurl.changefreq_named")
+    list.find(seven(), f => changefreq_text(f) == text)
 
 // A priority in thousandths as the `priority` element writes it:
 // `500` is `"0.5"`, `1000` is `"1.0"`, `125` is `"0.125"`.
 //
-// As few digits as represent the value exactly, so a sitemap read and
-// written again holds the same text for every priority a real writer
-// produces.
+// As few digits as represent the value exactly, and one after the
+// point at the least.  A value outside `0` to `1000`, such as the `-1`
+// of an absent priority, is `""`.
 //
 // ```novo
 // use sitemapurl
@@ -211,13 +221,19 @@ pub fn changefreq_named(text: Str) -> ?SitemapChangefreq []
 //     println(sitemapurl.priority_text(500))
 // ```
 pub fn priority_text(milli: Int) -> Str []
-    todo("sitemap-nv.sitemapurl.priority_text")
+    if milli < 0 or milli > 1000
+        return ""
+    var frac = str.pad_left("${milli % 1000}", 3, "0")
+    while str.len(frac) > 1 and str.ends_with(frac, "0")
+        frac = str.slice(frac, 0, str.len(frac) - 1)
+    "${milli / 1000}.${frac}"
 
 // A `priority` element's text as thousandths, or `None`.
 //
-// `None` for anything that is not a decimal between 0.0 and 1.0
-// inclusive.  Digits beyond a thousandth are truncated rather than
-// rounded, so a document read and written again holds the same number.
+// The text is an optional `0` or `1`, then an optional point and
+// digits, with at least one digit: `0.8`, `1`, `.5` and `1.0` are
+// priorities.  `None` for anything else and for a value above 1.0.
+// Digits beyond a thousandth are truncated rather than rounded.
 //
 // ```novo
 // use sitemapurl
@@ -228,14 +244,29 @@ pub fn priority_text(milli: Int) -> Str []
 //         None        => println("not a priority")
 // ```
 pub fn priority_of(text: Str) -> ?Int []
-    todo("sitemap-nv.sitemapurl.priority_of")
+    let point = str.index(text, ".") ?? str.len(text)
+    let whole = str.slice(text, 0, point)
+    var frac = ""
+    if point < str.len(text)
+        frac = str.slice(text, point + 1, str.len(text))
+    if not (whole == "" or whole == "0" or whole == "1") or not digits_only(frac)
+        return None
+    if whole == "" and frac == ""
+        return None
+    let milli = str.to_int(str.pad_right(str.slice(frac, 0, 3), 3, "0")) ?? 0
+    if whole == "1"
+        if not zeros_only(frac)
+            return None
+        return Some(1000)
+    Some(milli)
 
 // Whether a `lastmod` has the shape of a W3C Datetime.
 //
-// The protocol's date format: a complete date `YYYY-MM-DD`, optionally
-// followed by a time and a zone offset or `Z`.  A shape check and
-// nothing more — this package holds no calendar, so `2026-02-30` is
-// shaped and is not a day.
+// The six forms of the W3C Datetime note the protocol names: `YYYY`,
+// `YYYY-MM`, `YYYY-MM-DD`, and a complete date followed by `Thh:mm`,
+// `Thh:mm:ss` or `Thh:mm:ss.s…` and a zone, `Z` or `+hh:mm` or
+// `-hh:mm`.  Each number is checked against its range, and the day
+// against 31, so `2026-02-30` is shaped and is not a day.
 //
 // ```novo
 // use sitemapurl
@@ -245,15 +276,43 @@ pub fn priority_of(text: Str) -> ?Int []
 //     println("${sitemapurl.is_datetime_shaped("17 September 2026")}")
 // ```
 pub fn is_datetime_shaped(text: Str) -> Bool []
-    todo("sitemap-nv.sitemapurl.is_datetime_shaped")
+    let n = str.len(text)
+    if n < 4 or not number_in(text, 0, 4, 0, 9999)
+        return false
+    if n == 4
+        return true
+    if not (at(text, 4) == '-' and number_in(text, 5, 2, 1, 12))
+        return false
+    if n == 7
+        return true
+    if not (at(text, 7) == '-' and number_in(text, 8, 2, 1, 31))
+        return false
+    if n == 10
+        return true
+    if not (at(text, 10) == 'T' and number_in(text, 11, 2, 0, 23) and at(text, 13) == ':'
+            and number_in(text, 14, 2, 0, 59))
+        return false
+    var i = 16
+    if at(text, i) == ':'
+        if not number_in(text, 17, 2, 0, 59)
+            return false
+        i = 19
+        if at(text, i) == '.'
+            i = i + 1
+            let start = i
+            while is_digit(at(text, i))
+                i = i + 1
+            if i == start
+                return false
+    zone_at(text, i)
 
 // Why a `loc` is not acceptable, or `""` when it is.
 //
-// The protocol requires an absolute URL — a scheme and an authority —
-// of at most 2,048 characters, and says every URL in one file must
-// begin with the same path prefix as the file itself.  The first two
-// are checked here; the third needs the file's own address, which is
-// `sitemapdoc.check_prefix`.
+// The protocol requires an absolute URL, a scheme and a host, of at
+// most 2,048 characters, counted here in bytes.  The answer says which
+// rule the text breaks.  The protocol's rule that every URL begin with
+// the sitemap file's own path is `sitemapdoc.check_prefix`, because it
+// needs the file's address.
 //
 // ```novo
 // use sitemapurl
@@ -263,4 +322,82 @@ pub fn is_datetime_shaped(text: Str) -> Bool []
 //     println(sitemapurl.loc_problem("/a"))
 // ```
 pub fn loc_problem(loc: Str) -> Str []
-    todo("sitemap-nv.sitemapurl.loc_problem")
+    if loc == ""
+        return "is empty"
+    if str.len(loc) > 2048
+        return "is longer than 2,048 characters"
+    let sep = str.index(loc, "://") ?? -1
+    if sep <= 0 or not is_scheme(str.slice(loc, 0, sep))
+        return "is not an absolute URL"
+    let rest = str.slice(loc, sep + 3, str.len(loc))
+    var host_end = str.len(rest)
+    for mark in ["/", "?", "#"]
+        let i = str.index(rest, mark) ?? host_end
+        if i < host_end
+            host_end = i
+    if host_end == 0
+        return "has no host"
+    ""
+
+// The seven values, in the protocol's order.
+fn seven() -> [SitemapChangefreq]
+    [SitemapAlways,
+        SitemapHourly,
+        SitemapDaily,
+        SitemapWeekly,
+        SitemapMonthly,
+        SitemapYearly,
+        SitemapNever]
+
+// Whether a text holds nothing but ASCII digits.
+fn digits_only(t: Str) -> Bool
+    for i in 0..str.len(t)
+        if not is_digit(at(t, i))
+            return false
+    true
+
+// Whether a text holds nothing but the digit zero.
+fn zeros_only(t: Str) -> Bool
+    for i in 0..str.len(t)
+        if at(t, i) != '0'
+            return false
+    true
+
+// Whether the `width` digits at `from` are a number from `low` to
+// `high`.
+fn number_in(t: Str, from: Int, width: Int, low: Int, high: Int) -> Bool
+    let part = str.slice(t, from, from + width)
+    if str.len(part) != width or not digits_only(part)
+        return false
+    let n = str.to_int(part) ?? -1
+    n >= low and n <= high
+
+// Whether a W3C Datetime zone starts at `i` and ends the text.
+fn zone_at(t: Str, i: Int) -> Bool
+    let rest = str.slice(t, i, str.len(t))
+    if rest == "Z"
+        return true
+    if str.len(rest) != 6 or not (at(rest, 0) == '+' or at(rest, 0) == '-') or at(rest, 3) != ':'
+        return false
+    number_in(rest, 1, 2, 0, 23) and number_in(rest, 4, 2, 0, 59)
+
+// Whether a text is a URL scheme: a letter, then letters, digits, `+`,
+// `-` and `.`.
+fn is_scheme(t: Str) -> Bool
+    if not is_letter(at(t, 0))
+        return false
+    for i in 1..str.len(t)
+        let b = at(t, i)
+        if not (is_letter(b) or is_digit(b) or b == '+' or b == '-' or b == '.')
+            return false
+    true
+
+// The byte at `i`, or -1 past the end.
+fn at(t: Str, i: Int) -> Int
+    str.byte_at_or(t, i, -1)
+
+fn is_digit(b: Int) -> Bool
+    b >= '0' and b <= '9'
+
+fn is_letter(b: Int) -> Bool
+    b >= 'a' and b <= 'z' or b >= 'A' and b <= 'Z'
