@@ -1,0 +1,41 @@
+// hostile_tests.nv — sitemaps that nest, or that carry very many
+// entries.
+
+use std.test
+use std.list
+use sitemapread
+
+fn url_count(r: Result<SitemapDocument, SitemapFault>) -> Int
+    match r
+        Ok(d)  => list.len(d.urls.urls)
+        Err(_) => -1
+
+fn fault_of(r: Result<SitemapDocument, SitemapFault>) -> Str
+    match r
+        Ok(_)                      => "none"
+        Err(SitemapNotXml(_, _))   => "not-xml"
+        Err(SitemapBadPriority(_)) => "bad-priority"
+        Err(SitemapBadLastmod(_))  => "bad-lastmod"
+        Err(_)                     => "other"
+
+fn urlset(body: Str) -> Str
+    "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">" + body + "</urlset>"
+
+@test
+fn test_deep_nesting_is_bounded() [io]
+    test.assert_eq(fault_of(sitemapread.read("<urlset>" + "<a>".repeat(200000) + "</a>".repeat(200000) + "</urlset>")),
+        "not-xml")
+
+@test
+fn test_many_urls_are_read_in_bounded_time() [io]
+    let entry = "<url><loc>http://x/y</loc><lastmod>2020-01-01</lastmod></url>"
+    test.assert_eq(url_count(sitemapread.read(urlset(entry.repeat(20000)))), 20000)
+
+@test
+fn test_huge_numbers_are_refused() [io]
+    test.case("a priority of five thousand digits")
+    test.assert_eq(fault_of(sitemapread.read(urlset("<url><loc>http://x/y</loc><priority>" + "9".repeat(5000) + "</priority></url>"))),
+        "bad-priority")
+    test.case("a year past the range")
+    test.assert_eq(fault_of(sitemapread.read(urlset("<url><loc>http://x/y</loc><lastmod>99999999999999999999-01-01</lastmod></url>"))),
+        "bad-lastmod")
