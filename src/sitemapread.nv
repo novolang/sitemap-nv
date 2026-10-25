@@ -19,6 +19,7 @@ use sitemapdoc
 use sitemapurl
 use xmltree
 use xmlerror
+use sitemaperror
 
 // A document read into either of the two forms.
 //
@@ -226,7 +227,7 @@ fn read_tree(doc: xmltree.XmlDocument, strict: Bool) -> Result<SitemapDocument, 
     var refs: [SitemapRef] = []
     var skipped: [SitemapFault] = []
     for i in entry_nodes(doc)
-        let fault = entry_into(doc, i, kind, urls, refs)
+        let fault = entry_into(doc, i, kind, var urls, var refs)
         if let Some(f) = fault
             if strict
                 return Err(f)

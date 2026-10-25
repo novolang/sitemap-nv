@@ -1,6 +1,6 @@
 [package]
 name        = "sitemap-nv"
-version     = "0.1.0"
+version     = "0.1.1"
 description = "The sitemaps.org 0.9 protocol both ways: a URL set with lastmod, changefreq and priority as typed fields rather than text, the sitemap index form, and the 50,000-entry and 50 MB limits answered as a report over a document rather than discovered when a search engine refuses the file."
 license     = "Apache-2.0"
 
@@ -21,7 +21,7 @@ category    = "web"
 tags        = ["sitemap", "sitemaps-org", "sitemap-index", "seo", "crawler", "xml", "web"]
 repository  = "https://github.com/novolang/sitemap-nv"
 maintainers = ["novo-lang"]
-novo        = ">= 0.13.0"
+novo        = ">= 0.21.1"
 
 # A library: no `main`, so `novo pkg build` type-checks and
 # effect-checks every module under `src/` and writes no binary.

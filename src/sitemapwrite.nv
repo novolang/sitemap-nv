@@ -24,6 +24,8 @@ use std.str
 use std.list
 use xmlparse
 use sitemapurl
+use sitemapdoc
+use sitemaperror
 
 // How a document is laid out.
 //
@@ -103,7 +105,7 @@ pub fn without_namespace(o: SitemapWriteOptions) -> SitemapWriteOptions []
 pub fn write_urlset(var out: [u8], s: SitemapSet,
                     o: SitemapWriteOptions) -> Result<[u8], SitemapFault> []
     let text = to_str(s, o)!
-    Ok(appended(out, text))
+    Ok(appended(var out, text))
 
 // A `sitemapindex` document, appended to `out`, refused as
 // `write_urlset` refuses.
@@ -121,7 +123,7 @@ pub fn write_index(var out: [u8], i: SitemapIndex,
     for r in i.refs
         if let Some(f) = ref_fault(r)
             return Err(f)
-    Ok(appended(out, index_text(i, o)))
+    Ok(appended(var out, index_text(i, o)))
 
 // One `url` element, appended to `out`.
 //
@@ -142,7 +144,7 @@ pub fn write_url(var out: [u8], u: SitemapUrl,
                  o: SitemapWriteOptions) -> Result<[u8], SitemapFault> []
     if let Some(f) = url_fault(u)
         return Err(f)
-    Ok(appended(out, url_text(u, o)))
+    Ok(appended(var out, url_text(u, o)))
 
 // The declaration, when the options ask for one, and the root
 // element's open tag.
@@ -154,7 +156,7 @@ pub fn write_url(var out: [u8], u: SitemapUrl,
 //     println("${list.len(sitemapwrite.write_open([], SitemapUrlsetKind, sitemapwrite.options()))}")
 // ```
 pub fn write_open(var out: [u8], kind: SitemapKind, o: SitemapWriteOptions) -> [u8] []
-    appended(out, open_text(kind, o))
+    appended(var out, open_text(kind, o))
 
 // The root element's close tag.
 //
@@ -165,7 +167,7 @@ pub fn write_open(var out: [u8], kind: SitemapKind, o: SitemapWriteOptions) -> [
 //     println("${list.len(sitemapwrite.write_close([], SitemapUrlsetKind, sitemapwrite.options()))}")
 // ```
 pub fn write_close(var out: [u8], kind: SitemapKind, o: SitemapWriteOptions) -> [u8] []
-    appended(out, line(0, "</${root_name(kind)}>", o))
+    appended(var out, line(0, "</${root_name(kind)}>", o))
 
 // A `urlset` as a string.
 //

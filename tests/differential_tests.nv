@@ -14,6 +14,7 @@ use sitemapdoc
 use sitemapread
 use sitemapurl
 use sitemapwrite
+use sitemaperror
 
 fn text_of(r: Result<[u8], SitemapFault>) -> Str
     match r
